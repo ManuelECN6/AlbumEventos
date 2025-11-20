@@ -149,6 +149,7 @@ export const uploadFileToFirebase = async (file: File, path: string): Promise<st
 /**
  * PROCESAR Y SUBIR FOTOS
  * Reemplaza la lógica local. Sube el archivo real a Storage y devuelve el objeto Photo.
+ * MODIFICADO: Ahora guarda en eventos/{ID}/fotos/ para mantener orden estricto.
  */
 export const processAndUploadPhoto = async (
   file: File, 
@@ -159,15 +160,18 @@ export const processAndUploadPhoto = async (
 ): Promise<Photo> => {
   const isVideo = file.type.startsWith('video/') || file.type === 'video/quicktime';
   const timestamp = Date.now();
-  const fileName = `${timestamp}-${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-  const path = `events/${eventId}/${fileName}`;
+  
+  // Limpiamos el nombre del archivo para evitar caracteres raros en Storage
+  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+  const uniqueFileName = `${timestamp}_${sanitizedFileName}`;
+  
+  // ESTRUCTURA DE CARPETAS SOLICITADA: eventos/{ID_DEL_EVENTO}/fotos/{nombre_archivo_unico}
+  const path = `eventos/${eventId}/fotos/${uniqueFileName}`;
 
   // 1. Subir el archivo original a Firebase Storage
   const downloadUrl = await uploadFileToFirebase(file, path);
 
   // 2. Crear el objeto Photo
-  // Nota: En una app real de producción, generaríamos un thumbnail más pequeño.
-  // Aquí usamos la misma URL para simplificar.
   const newPhoto: Photo = {
     id: `photo-${timestamp}`,
     url: downloadUrl,
