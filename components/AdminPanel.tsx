@@ -182,6 +182,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Category State
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryColor, setNewCategoryColor] = useState('#3b82f6');
 
   // Update local form state when the selected event changes
   useEffect(() => {
@@ -305,6 +306,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       };
       
       img.src = "data:image/svg+xml;base64," + btoa(svgData);
+  };
+
+  // --- CATEGORY HANDLERS ---
+  const handleAddCategory = () => {
+    if (newCategoryName.trim()) {
+        const newCat: Category = {
+            id: `c-${Date.now()}`,
+            name: newCategoryName.trim(),
+            color: newCategoryColor
+        };
+        setLocalConfig(prev => ({
+            ...prev,
+            categories: [...prev.categories, newCat]
+        }));
+        setNewCategoryName('');
+        setNewCategoryColor('#3b82f6'); 
+    }
+  };
+
+  const handleDeleteCategory = (id: string) => {
+      if (localConfig.categories.length <= 1) {
+          alert("Debe haber al menos una categoría.");
+          return;
+      }
+      setLocalConfig(prev => ({
+          ...prev,
+          categories: prev.categories.filter(c => c.id !== id)
+      }));
   };
 
   // --- BULK SELECTION HELPERS ---
@@ -790,6 +819,101 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+          )}
+
+          {activeTab === 'categories' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* Sidebar: Add New */}
+                <div className="lg:col-span-4 space-y-6">
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                        <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
+                            <Grid className="text-[#4f46e5]" />
+                            Nueva Categoría
+                        </h3>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">Nombre de la Categoría</label>
+                                <input 
+                                    type="text" 
+                                    value={newCategoryName}
+                                    onChange={(e) => setNewCategoryName(e.target.value)}
+                                    placeholder="Ej: Boda, Fiesta, Viaje..."
+                                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none transition-all"
+                                />
+                            </div>
+                            
+                            <div>
+                                <ColorPicker 
+                                    label="Color Identificativo" 
+                                    value={newCategoryColor} 
+                                    onChange={setNewCategoryColor}
+                                    fallback="#3b82f6"
+                                />
+                            </div>
+
+                            <button 
+                                onClick={handleAddCategory}
+                                disabled={!newCategoryName.trim()}
+                                className="w-full py-3 bg-[#4f46e5] text-white rounded-lg font-bold shadow-md hover:bg-[#4338ca] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                <Plus size={18} /> Añadir Categoría
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-sm text-blue-800">
+                        <p className="flex gap-2">
+                            <HelpCircle size={16} className="shrink-0 mt-0.5" />
+                            <span>Las categorías ayudan a organizar las fotos en la galería pública. Cada foto tendrá una etiqueta con el color seleccionado.</span>
+                        </p>
+                    </div>
+                </div>
+
+                {/* Main: List */}
+                <div className="lg:col-span-8">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                             <h3 className="font-bold text-gray-700">Categorías Existentes ({localConfig.categories.length})</h3>
+                        </div>
+                        
+                        <div className="divide-y divide-gray-100">
+                            {localConfig.categories.map((cat) => (
+                                <div key={cat.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors group">
+                                    <div className="flex items-center gap-4">
+                                        <div 
+                                            className="w-10 h-10 rounded-full shadow-sm border-2 border-white flex items-center justify-center text-white font-bold text-xs uppercase"
+                                            style={{ backgroundColor: cat.color }}
+                                        >
+                                            {cat.name.substring(0, 2)}
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-gray-800">{cat.name}</p>
+                                            <p className="text-xs text-gray-400 font-mono">{cat.id}</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                            onClick={() => handleDeleteCategory(cat.id)}
+                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                            title="Eliminar"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                            
+                            {localConfig.categories.length === 0 && (
+                                <div className="p-8 text-center text-gray-400">
+                                    No hay categorías definidas.
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1370,9 +1494,57 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   );
 };
 
-// Dummy component for Google Drive Backup (Replace with actual implementation if needed)
-const GoogleDriveBackup = ({ eventName, onFolderCreated }: { eventName: string, onFolderCreated: (id: string, url: string) => void }) => (
-    <button className="text-xs text-blue-600 underline" onClick={() => alert("Funcionalidad simulada: Conectar Google Drive")}>
-        Conectar Cuenta (Simulado)
-    </button>
-);
+// Functional component for Google Drive Backup with manual link support
+const GoogleDriveBackup = ({ eventName, onFolderCreated }: { eventName: string, onFolderCreated: (id: string, url: string) => void }) => {
+    const [url, setUrl] = useState('');
+    const [isEditing, setIsEditing] = useState(false);
+
+    if (!isEditing) {
+        return (
+            <button 
+                className="text-xs text-blue-600 underline hover:text-blue-800 flex items-center gap-1 font-bold" 
+                onClick={() => setIsEditing(true)}
+            >
+                <ExternalLink size={12} /> Vincular Carpeta Manualmente
+            </button>
+        );
+    }
+
+    return (
+        <div className="flex flex-col gap-2 w-full max-w-sm animate-fade-in mt-2">
+            <input 
+                type="text" 
+                placeholder="Pega el enlace de la carpeta de Drive..."
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
+                autoFocus
+            />
+            <div className="flex gap-2">
+                <button 
+                    disabled={!url.trim()}
+                    onClick={() => {
+                        if(url.trim()) {
+                            // Extract ID if possible or just use a placeholder ID
+                            const folderId = 'manual-folder-' + Date.now();
+                            onFolderCreated(folderId, url.trim());
+                            setIsEditing(false);
+                        }
+                    }}
+                    className="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
+                >
+                    Guardar
+                </button>
+                <button 
+                    onClick={() => setIsEditing(false)}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-md hover:bg-gray-200 transition-colors"
+                >
+                    Cancelar
+                </button>
+            </div>
+            <p className="text-[10px] text-gray-400 italic">
+                * La sincronización automática requiere configuración de API Cloud.
+            </p>
+        </div>
+    );
+};
