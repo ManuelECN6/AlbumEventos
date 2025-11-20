@@ -51,6 +51,26 @@ export const saveEventToFirebase = async (event: EventConfig) => {
 };
 
 /**
+ * ACTUALIZAR UN CAMPO ESPECÍFICO DE UN EVENTO
+ * Usa updateDoc para una actualización atómica y eficiente.
+ * Ideal para cambios puntuales como toggles o remover una imagen.
+ */
+export const updateEventFieldInFirebase = async (eventId: string, fieldPath: string, value: any) => {
+  try {
+    const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+    // updateDoc soporta notación de puntos para campos anidados (ej: 'theme.coverImage')
+    await updateDoc(eventRef, {
+      [fieldPath]: value
+    });
+  } catch (error) {
+    console.error(`Error actualizando el campo ${fieldPath} en Firebase:`, error);
+    // Re-lanzamos el error para que el componente que llama pueda manejarlo y mostrar un UI de error.
+    throw error;
+  }
+};
+
+
+/**
  * ELIMINAR EVENTO
  */
 export const deleteEventFromFirebase = async (eventId: string) => {
@@ -65,15 +85,48 @@ export const deleteEventFromFirebase = async (eventId: string) => {
 /**
  * ELIMINAR ARCHIVO DE STORAGE
  * Elimina el archivo físico usando su URL de descarga.
+ * AHORA ES ROBUSTA: Maneja errores de permisos explícitamente y URLs externas.
  */
 export const deleteFileFromFirebase = async (fileUrl: string) => {
   try {
-    // Firebase permite crear una referencia directamente desde la URL HTTPS completa
-    const fileRef = ref(storage, fileUrl);
-    await deleteObject(fileRef);
-  } catch (error) {
-    console.error("Error eliminando archivo de Storage:", error);
-    // No lanzamos error para permitir que el proceso continúe y elimine la referencia en BD
+    if (!fileUrl) return;
+
+    // 1. VALIDACIÓN DE URL: Si no es de Firebase Storage (ej: Google Drive, url externa),
+    // NO intentamos borrarla físicamente. Solo retornamos éxito para que se borre de la DB.
+    if (!fileUrl.includes('firebasestorage.googleapis.com')) {
+      // Es normal que esto pase con fotos importadas, no es un error.
+      return; 
+    }
+
+    // 2. Intentamos crear la referencia y borrar
+    try {
+        const fileRef = ref(storage, fileUrl);
+        await deleteObject(fileRef);
+    } catch (innerError: any) {
+        // Si el error es que el objeto no existe, perfecto, ya está borrado.
+        if (innerError.code === 'storage/object-not-found') {
+            return;
+        }
+        // Si es un error de URL inválida (a veces pasa con caracteres raros), lo ignoramos
+        // para permitir que la limpieza de la base de datos continúe.
+        if (innerError.code === 'storage/invalid-argument') {
+            console.warn(`URL inválida para Storage, omitiendo borrado físico: ${fileUrl}`);
+            return;
+        }
+        // Si es error de permisos, lo relanzamos para avisar al usuario
+        if (innerError.code === 'storage/unauthorized') {
+            throw innerError;
+        }
+        // Otros errores los logueamos pero no detenemos el proceso masivo
+        console.error(`Error no crítico borrando archivo ${fileUrl}:`, innerError);
+    }
+
+  } catch (error: any) {
+    // Relanzar solo si es error de permisos para mostrar la alerta gigante
+    if (error.code === 'storage/unauthorized') {
+      throw error; 
+    }
+    console.error(`Error general en deleteFileFromFirebase:`, error);
   }
 };
 
@@ -137,4 +190,22 @@ export const processAndUploadPhoto = async (
   };
 
   return newPhoto;
+};
+
+/**
+ * OBTENER UN EVENTO ESPECÍFICO
+ * Obtiene los datos de un único evento por su ID.
+ */
+export const getEvent = async (eventId: string): Promise<EventConfig | null> => {
+  try {
+    const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+    const docSnap = await getDoc(eventRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as EventConfig;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching event:", error);
+    throw error;
+  }
 };

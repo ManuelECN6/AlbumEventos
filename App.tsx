@@ -5,7 +5,7 @@ import { UploadModal } from './components/UploadModal';
 import { DownloadModal } from './components/DownloadModal';
 import { AdminPanel } from './components/AdminPanel';
 import { Photo, EventConfig, Participant } from './types';
-import { subscribeToEvents, saveEventToFirebase, deleteEventFromFirebase, processAndUploadPhoto, deleteFileFromFirebase } from './services/firebaseService';
+import { subscribeToEvents, saveEventToFirebase, deleteEventFromFirebase, processAndUploadPhoto, deleteFileFromFirebase, getEvent, updateEventFieldInFirebase } from './services/firebaseService';
 import { 
   Heart, 
   Camera, 
@@ -57,7 +57,8 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
       avatarTextColor: '#ffffff',
       coverOverlayColor: '#000000',
       coverOverlayOpacity: 0.4,
-      coverBlur: 0
+      coverBlur: 0,
+      coverImagePositionY: 50
     },
     googleDriveUrl: '',
     isDriveBackupEnabled: false
@@ -251,6 +252,16 @@ export default function App() {
     await saveEventToFirebase(updatedEvent);
   };
 
+  const handleUpdateEventField = async (fieldPath: string, value: any) => {
+    if (!activeEvent?.id) return;
+    try {
+        await updateEventFieldInFirebase(activeEvent.id, fieldPath, value);
+    } catch (error: any) {
+        console.error(`Failed to update field ${fieldPath}:`, error);
+        alert(`Hubo un error al guardar el cambio para ${fieldPath}: ${error.message}`);
+    }
+  };
+
   const handleDeleteEvent = async (id: string) => {
     if (events.length <= 1) {
       alert("No puedes eliminar el último evento.");
@@ -330,6 +341,61 @@ export default function App() {
     }
   };
 
+  const handleDriveImport = async (files: File[]) => {
+    setIsProcessing(true);
+    try {
+        const authorName = activeEvent.clientName || 'Admin';
+        const authorColor = activeEvent.theme?.secondaryColor || '#4f46e5';
+        const newPhotos: Photo[] = [];
+
+        // 1. Process and upload all files to Firebase Storage
+        for (const file of files) {
+            try {
+                // Use a stable device ID for the admin importer to group all imports
+                const importerDeviceId = `drive-importer-${activeEvent.id}`;
+                const photoObject = await processAndUploadPhoto(file, activeEvent.id, authorName, authorColor, importerDeviceId);
+                newPhotos.push(photoObject);
+            } catch (error) {
+                console.error(`Error processing Drive file ${file.name}:`, error);
+            }
+        }
+
+        if (newPhotos.length > 0) {
+            // 2. Get the latest event state to avoid overwriting data
+            const latestEvent = await getEvent(activeEvent.id);
+            if (!latestEvent) throw new Error("Event not found for Drive import.");
+
+            let updatedParticipants = [...(latestEvent.participants || [])];
+            const importerDeviceId = `drive-importer-${latestEvent.id}`;
+
+            // 3. Find or create a participant entry for the importer
+            let importerParticipant = updatedParticipants.find(p => p.id === importerDeviceId);
+            if (!importerParticipant) {
+                importerParticipant = {
+                    id: importerDeviceId,
+                    name: authorName,
+                    status: 'confirmed',
+                    addedAt: new Date().toISOString().split('T')[0],
+                };
+                updatedParticipants.push(importerParticipant);
+            }
+
+            // 4. Combine new photos with existing ones and save
+            const updatedEvent = {
+                ...latestEvent,
+                photos: [...newPhotos, ...latestEvent.photos],
+                participants: updatedParticipants,
+            };
+            await saveEventToFirebase(updatedEvent);
+        }
+    } catch (error: any) {
+        console.error("Failed to import from Google Drive:", error);
+        alert(`Hubo un error al importar las fotos de Google Drive: ${error.message}`);
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
   const handleLike = async (photoId: string) => {
       if (!activeEvent) return;
       
@@ -366,12 +432,38 @@ export default function App() {
      alert("Foto reportada. El administrador la revisará.");
   };
 
-  // Soft Delete (Move to Recycle Bin)
-  const handleDeletePhoto = (photoId: string) => {
-    const updatedPhotos = activeEvent.photos.map(p => 
-        p.id === photoId ? { ...p, isDeleted: true } : p
+  // Soft Delete (Move to Recycle Bin) - WITH OPTIMISTIC UPDATE
+  const handleDeletePhoto = async (photoId: string) => {
+    if (!currentEventId) return;
+
+    // Optimistic UI Update
+    const eventBeforeUpdate = events.find(e => e.id === currentEventId);
+    if (!eventBeforeUpdate) return;
+    
+    const optimisticallyUpdatedPhotos = eventBeforeUpdate.photos.map(p =>
+      p.id === photoId ? { ...p, isDeleted: true } : p
     );
-    handleUpdateEvent({ ...activeEvent, photos: updatedPhotos });
+    const optimisticEvent = { ...eventBeforeUpdate, photos: optimisticallyUpdatedPhotos };
+    setEvents(events.map(e => e.id === currentEventId ? optimisticEvent : e));
+    
+    // Perform actual DB operation directly
+    try {
+      // We rely on the optimistic update. In a real app with heavy concurrency,
+      // we might want to fetch fresh data, but for soft delete, updating based on current state is acceptable
+      // to ensure the UI feels snappy. The next subscription update will sync truth.
+      const latestEvent = await getEvent(currentEventId);
+      if (latestEvent) {
+          const updatedPhotos = latestEvent.photos.map(p => 
+            p.id === photoId ? { ...p, isDeleted: true } : p
+          );
+          await updateEventFieldInFirebase(currentEventId, 'photos', updatedPhotos);
+      }
+    } catch (error: any) {
+      console.error("Error during soft delete:", error);
+      alert(`Hubo un error al mover la foto a la papelera: ${error.message}`);
+      // Revert on failure
+      setEvents(events.map(e => e.id === currentEventId ? eventBeforeUpdate : e));
+    }
   };
 
   // Bulk Restore Photos (And Participants)
@@ -415,60 +507,93 @@ export default function App() {
       handleBulkRestore([photoId]);
   };
 
-  // Hard Delete (Permanent)
-  const handlePermanentDelete = async (photoId: string) => {
-      await handleBulkPermanentDelete([photoId]);
-  };
+  // --- LÓGICA DE ELIMINACIÓN RE-ARQUITECTADA ---
 
-  const handleBulkPermanentDelete = async (photoIds: string[]) => {
-    if (photoIds.length === 0 || !activeEvent) {
+  // NÚCLEO CENTRAL DE ELIMINACIÓN PERMANENTE:
+  // Esta es la única función que borra archivos de Storage y actualiza la DB.
+  const handlePermanentPhotoRemoval = async (photoIdsToRemove: string[]) => {
+    if (!currentEventId || photoIdsToRemove.length === 0) {
       return;
     }
-  
+
     setIsProcessing(true);
-    // Use a snapshot of the current event to avoid issues with stale state during async operations
-    const eventSnapshot = { ...activeEvent }; 
-    const currentPhotos = eventSnapshot.photos || [];
-  
     try {
-      const photosToDelete = currentPhotos.filter(p => photoIds.includes(p.id));
+      // 1. Obtener la versión más reciente del evento desde la base de datos.
+      const latestEvent = await getEvent(currentEventId);
+      if (!latestEvent) throw new Error("No se pudo sincronizar con el evento.");
+
+      const idsSet = new Set(photoIdsToRemove);
+      
+      // 2. Identificar los archivos que realmente existen en la versión más reciente.
+      const photosToDelete = latestEvent.photos.filter(p => idsSet.has(p.id));
       const urlsToDelete = photosToDelete.map(p => p.url).filter(Boolean);
-  
-      // 1. Delete files from Storage in batches
-      const BATCH_SIZE = 10;
-      for (let i = 0; i < urlsToDelete.length; i += BATCH_SIZE) {
-        const batch = urlsToDelete.slice(i, i + BATCH_SIZE);
-        await Promise.all(
-          batch.map(url => deleteFileFromFirebase(url).catch(e => console.error(`Failed to delete ${url}, but continuing.`, e)))
-        );
+
+      // 3. Intentar borrar todos los archivos de Firebase Storage.
+      // IMPORTANTE: Lo hacemos en lotes (batches) para no saturar la conexión y asegurar que se borren.
+      // Si intentamos borrar 100 fotos de golpe, Firebase/Navegador puede bloquear las peticiones.
+      const CHUNK_SIZE = 3; 
+      const permissionErrors: any[] = [];
+
+      for (let i = 0; i < urlsToDelete.length; i += CHUNK_SIZE) {
+          const chunk = urlsToDelete.slice(i, i + CHUNK_SIZE);
+          // Esperamos a que termine este lote antes de seguir
+          const results = await Promise.allSettled(chunk.map(url => deleteFileFromFirebase(url)));
+          
+          // Recolectar errores de permisos
+          results.forEach(r => {
+              if (r.status === 'rejected' && (r.reason?.code === 'storage/unauthorized' || r.reason?.message?.includes('unauthorized'))) {
+                  permissionErrors.push(r.reason);
+              }
+          });
+
+          // Pequeña pausa para no ahogar el hilo principal
+          await new Promise(resolve => setTimeout(resolve, 100));
       }
-  
-      // 2. Update database by removing photo entries
-      const updatedPhotos = currentPhotos.filter(p => !photoIds.includes(p.id));
-      await handleUpdateEvent({ ...eventSnapshot, photos: updatedPhotos });
-  
-    } catch (error) {
-      console.error("Error during bulk permanent delete:", error);
-      alert("Hubo un error al eliminar los archivos. Por favor, inténtalo de nuevo.");
+      
+      if (permissionErrors.length > 0) {
+          // Si hubo errores de permisos, lanzamos uno para avisar, pero después de intentar borrar todo lo posible
+          throw new Error("Permiso denegado por Firebase Storage. Asegúrate de que las reglas permiten borrar.");
+      }
+
+      // 4. Actualizar la base de datos con la lista limpia.
+      const updatedPhotos = latestEvent.photos.filter(p => !idsSet.has(p.id));
+      
+      await updateEventFieldInFirebase(currentEventId, 'photos', updatedPhotos);
+
+      // --- FIX: ACTUALIZACIÓN LOCAL INMEDIATA (OPTIMISTIC UPDATE FORZADO) ---
+      // Esto garantiza que la UI refleje el cambio visualmente al instante, 
+      // aunque la suscripción de Firebase tarde unos milisegundos en dispararse.
+      setEvents(prevEvents => prevEvents.map(e => {
+          if (e.id === currentEventId) {
+              return { ...e, photos: updatedPhotos };
+          }
+          return e;
+      }));
+      
+      // ALERT DE ÉXITO: Para confirmar al usuario que la operación terminó
+      alert(`Operación completada. Se eliminaron ${photoIdsToRemove.length} elementos permanentemente.`);
+
+    } catch (error: any) {
+      console.error("Error en la eliminación permanente:", error);
+      
+      if (error.message.includes("Permiso denegado") || error.code === 'storage/unauthorized' || error.code === 'permission-denied') {
+          alert("ERROR DE PERMISOS: Firebase bloqueó la eliminación. \n\nSolución: Ve a Firebase Console > Storage > Rules y cambia a 'allow read, write: if true;'");
+      } else {
+          alert(`Hubo un error al eliminar los archivos: ${error.message}`);
+      }
     } finally {
       setIsProcessing(false);
     }
   };
-  
-  const handleEmptyTrash = async () => {
-    if (!activeEvent) return;
-  
-    const photosToDelete = (activeEvent.photos || []).filter(p => p.isDeleted);
-  
-    if (photosToDelete.length === 0) {
-      alert("La papelera ya está vacía.");
-      return;
-    }
-  
-    if (confirm(`¿Estás seguro de que quieres vaciar la papelera? Se eliminarán permanentemente ${photosToDelete.length} elementos. Esta acción no se puede deshacer.`)) {
-      const idsToDelete = photosToDelete.map(p => p.id);
-      await handleBulkPermanentDelete(idsToDelete);
-    }
+
+  // Wrapper para eliminar una selección. Pasa los IDs directamente al núcleo.
+  const handleBulkPermanentDelete = (ids: string[]) => {
+    return handlePermanentPhotoRemoval(ids);
+  };
+
+  // Wrapper para eliminar una sola foto de forma permanente.
+  const handlePermanentDelete = (photoId: string) => {
+    handlePermanentPhotoRemoval([photoId]);
   };
   
   const handleArchivePhoto = (photoId: string) => {
@@ -478,12 +603,35 @@ export default function App() {
       handleUpdateEvent({ ...activeEvent, photos: updatedPhotos });
   };
 
-  const handleBulkDelete = (photoIds: string[]) => {
-    // Soft delete multiple
-    const updatedPhotos = activeEvent.photos.map(p => 
-        photoIds.includes(p.id) ? { ...p, isDeleted: true } : p
+  const handleBulkDelete = async (photoIds: string[]) => {
+    if (!currentEventId) return;
+    const idsSet = new Set(photoIds);
+
+    // Optimistic UI Update
+    const eventBeforeUpdate = events.find(e => e.id === currentEventId);
+    if (!eventBeforeUpdate) return;
+
+    const optimisticallyUpdatedPhotos = eventBeforeUpdate.photos.map(p =>
+      idsSet.has(p.id) ? { ...p, isDeleted: true } : p
     );
-    handleUpdateEvent({ ...activeEvent, photos: updatedPhotos });
+    const optimisticEvent = { ...eventBeforeUpdate, photos: optimisticallyUpdatedPhotos };
+    setEvents(events.map(e => e.id === currentEventId ? optimisticEvent : e));
+
+    // Perform actual DB operation
+    try {
+      const latestEvent = await getEvent(currentEventId);
+      if (!latestEvent) throw new Error("Event not found for bulk delete");
+
+      const updatedPhotos = latestEvent.photos.map(p =>
+        idsSet.has(p.id) ? { ...p, isDeleted: true } : p
+      );
+      await updateEventFieldInFirebase(currentEventId, 'photos', updatedPhotos);
+    } catch (error) {
+      console.error("Error during bulk soft delete:", error);
+      alert("Hubo un error al mover las fotos a la papelera.");
+      // Revert on failure
+      setEvents(events.map(e => e.id === currentEventId ? eventBeforeUpdate : e));
+    }
   };
 
   const handleBulkArchive = (photoIds: string[], shouldArchive: boolean) => {
@@ -525,6 +673,7 @@ export default function App() {
         currentEventPhotos={photos} 
         isProcessing={isProcessing} // Pasamos el estado de carga
         onUpdateEvent={handleUpdateEvent}
+        onUpdateField={handleUpdateEventField} // Pass the new handler for atomic updates
         onCreateEvent={handleCreateEvent}
         onSelectEvent={setCurrentEventId}
         onDeleteEvent={handleDeleteEvent}
@@ -535,8 +684,8 @@ export default function App() {
         onBulkDelete={handleBulkDelete}
         onBulkArchive={handleBulkArchive}
         onBulkRestore={handleBulkRestore} // Restore Bulk (New)
-        onBulkPermanentDelete={handleBulkPermanentDelete} // NEW: Bulk Hard Delete Passed
-        onEmptyTrash={handleEmptyTrash}
+        onBulkPermanentDelete={handleBulkPermanentDelete} // Pass the robust handler
+        onDriveImport={handleDriveImport}
         onExit={() => setIsAdminMode(false)} 
       />
     );
@@ -590,7 +739,10 @@ export default function App() {
                     src={activeEvent.coverImage} 
                     className="w-full h-full object-cover transition-all duration-500" 
                     alt="Cover" 
-                    style={{ filter: `blur(${theme.coverBlur || 0}px)` }}
+                    style={{ 
+                        objectPosition: `50% ${theme.coverImagePositionY || 50}%`,
+                        filter: `blur(${theme.coverBlur || 0}px)` 
+                    }}
                  />
             </div>
         )}
@@ -713,7 +865,7 @@ export default function App() {
                 <div className="p-4 flex items-start justify-between">
                     <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-gray-700" style={{ backgroundColor: photo.author.avatarColor }}>{photo.author.initials}</div>
-                    <div><h3 className="font-bold text-gray-800 text-sm">{photo.author.name}</h3><p className="text-gray-400 text-xs">{photo.createdAt}</p></div>
+                    <div><h3 className="font-bold text-gray-800 text-sm">{photo.author.name}</h3><p className="text-gray-400 text-xs">{new Date(photo.createdAt).toLocaleString()}</p></div>
                     </div>
                     <button onClick={() => handleReport(photo.id)} className="text-gray-300 hover:text-red-500"><Flag size={18} /></button>
                 </div>

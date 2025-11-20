@@ -1,8 +1,9 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
 import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Pencil, Check, X as XIcon, LogOut, FolderPlus, Folder, Users, Search, Video, Grid, Eye, EyeOff, Lock, Link as LinkIcon, Copy, RefreshCw, UserCheck, ExternalLink, Menu, Maximize2, Calendar, Clock, CheckSquare, Square, UserPlus, Mail, BadgeCheck, AlertCircle, Palette, Upload, Type, Cloud, FileText, QrCode, Download, Loader2, HelpCircle, PieChart, Camera, PlayCircle, RotateCcw, Trash2, Filter, AlertTriangle, UserX, Heart, ImageIcon, Sliders, Droplet, Zap } from 'lucide-react';
 import { uploadFileToFirebase } from '../services/firebaseService';
+import { GoogleDriveImporter } from './GoogleDriveImporter';
+import QRCode from "react-qr-code";
 
 interface AdminPanelProps {
   events: EventConfig[];
@@ -10,6 +11,7 @@ interface AdminPanelProps {
   currentEventPhotos?: Photo[];
   isProcessing?: boolean;
   onUpdateEvent: (updatedEvent: EventConfig) => void;
+  onUpdateField: (fieldPath: string, value: any) => void;
   onCreateEvent: () => void;
   onSelectEvent: (id: string) => void;
   onDeleteEvent: (id: string) => void;
@@ -21,9 +23,50 @@ interface AdminPanelProps {
   onBulkArchive: (ids: string[], shouldArchive: boolean) => void;
   onBulkRestore: (ids: string[]) => void;
   onBulkPermanentDelete: (ids: string[]) => Promise<void>;
-  onEmptyTrash: () => void;
+  onDriveImport: (files: File[]) => Promise<void>;
   onExit: () => void;
 }
+
+// FIX: Defined DEFAULT_EVENT_TEMPLATE as it was missing in this file's scope.
+// It is used as a fallback for theme properties.
+const DEFAULT_EVENT_TEMPLATE: EventConfig = {
+    id: '',
+    title: 'Nuevo Evento',
+    subtitle: 'Descripción del evento',
+    date: 'DD/MM/AAAA',
+    participantsCount: 0,
+    participants: [],
+    photos: [],
+    categories: [{ id: 'c1', name: 'General', color: '#3b82f6' }],
+    allowUploads: true,
+    allowedMediaTypes: ['photo'],
+    storageLimit: 100,
+    maxPhotosPerPerson: 25,
+    maxVideosPerPerson: 5,
+    clientName: 'Cliente Nuevo',
+    downloadPassword: Math.random().toString(36).slice(-6),
+    publicToken: '',
+    theme: {
+      backgroundColor: '#f5f0e6',
+      textColor: '#1f2937',
+      primaryColor: '#a87b51',
+      primaryTextColor: '#ffffff',
+      secondaryColor: '#4f46e5',
+      secondaryTextColor: '#ffffff',
+      statsTextColor: '#6b7280',
+      headerTitleColor: '#1f2937',
+      headerDateColor: '#6b7280',
+      fontFamily: 'sans',
+      avatarBackgroundColor: '#374151',
+      avatarTextColor: '#ffffff',
+      coverOverlayColor: '#000000',
+      coverOverlayOpacity: 0.4,
+      coverBlur: 0,
+      coverImagePositionY: 50
+    },
+    googleDriveUrl: '',
+    isDriveBackupEnabled: false
+};
 
 // --- OPTIMIZED COLOR PICKER COMPONENT ---
 const ColorPicker = ({ label, value, onChange, fallback }: { label: string, value?: string, onChange: (val: string) => void, fallback: string }) => {
@@ -87,7 +130,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   currentEventId, 
   currentEventPhotos = [],
   isProcessing = false,
-  onUpdateEvent, 
+  onUpdateEvent,
+  onUpdateField,
   onCreateEvent, 
   onSelectEvent, 
   onDeleteEvent, 
@@ -99,7 +143,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onBulkArchive, 
   onBulkRestore, 
   onBulkPermanentDelete, 
-  onEmptyTrash, 
+  onDriveImport, 
   onExit 
 }) => {
   // Find the active event object
@@ -139,8 +183,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Update local form state when the selected event changes
   useEffect(() => {
+    // BUG FIX: Only clear selection if the actual Event ID changes.
+    // Prevents clearing selection when Firebase updates data (e.g., after deleting one item).
+    if (activeEvent.id !== localConfig.id) {
+        setSelectedIds([]); 
+    }
     setLocalConfig({ ...activeEvent });
-    setSelectedIds([]); 
   }, [activeEvent]);
 
   const handleSave = () => {
@@ -286,7 +334,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const toggleSelectAll = () => {
     const targetPhotos = displayedPhotos;
-    if (selectedIds.length === targetPhotos.length) {
+    // FIX: Robust check - only deselect all if EVERY visible photo is currently selected.
+    // Otherwise, select all visible photos.
+    const allVisibleSelected = targetPhotos.length > 0 && targetPhotos.every(p => selectedIds.includes(p.id));
+    
+    if (allVisibleSelected) {
         setSelectedIds([]);
     } else {
         setSelectedIds(targetPhotos.map(p => p.id));
@@ -299,9 +351,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           onBulkDelete(selectedIds);
           setSelectedIds([]);
       } else {
-          if(confirm(`¿Eliminar permanentemente ${selectedIds.length} fotos?`)) {
-              await onBulkPermanentDelete(selectedIds);
-              setSelectedIds([]);
+          // Confirmación manual en la UI
+          if(window.confirm(`¿Estás seguro de ELIMINAR PERMANENTEMENTE ${selectedIds.length} elementos? Esta acción no se puede deshacer.`)) {
+              try {
+                  await onBulkPermanentDelete(selectedIds);
+                  setSelectedIds([]);
+              } catch (error: any) {
+                  alert(`Error al eliminar: ${error.message}`);
+              }
           }
       }
   };
@@ -320,12 +377,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               setIsUploadingBanner(true);
               const path = `events/${currentEventId}/banner-${Date.now()}-${file.name}`;
               const downloadUrl = await uploadFileToFirebase(file, path);
-              setLocalConfig(prev => ({ ...prev, coverImage: downloadUrl }));
-              setIsUploadingBanner(false);
+              onUpdateField('coverImage', downloadUrl);
           } catch (error) {
               console.error("Error subiendo banner:", error);
-              setIsUploadingBanner(false);
               alert("Error al subir la imagen de portada.");
+          } finally {
+              setIsUploadingBanner(false);
           }
       }
   };
@@ -337,12 +394,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               setIsUploadingAvatar(true);
               const path = `events/${currentEventId}/avatar-${Date.now()}-${file.name}`;
               const downloadUrl = await uploadFileToFirebase(file, path);
-              updateThemeColor('avatarImage', downloadUrl);
-              setIsUploadingAvatar(false);
+              onUpdateField('theme.avatarImage', downloadUrl);
           } catch (error) {
               console.error("Error subiendo avatar:", error);
-              setIsUploadingAvatar(false);
               alert("Error al subir imagen de avatar.");
+          } finally {
+              setIsUploadingAvatar(false);
           }
       }
   };
@@ -350,41 +407,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleRemoveCover = (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      if(confirm("¿Quitar imagen de portada?")) {
-          setLocalConfig(prev => ({ ...prev, coverImage: '' }));
+      if (confirm("¿Quitar imagen de portada?")) {
+          // Send a direct, atomic update to Firebase.
+          onUpdateField('coverImage', '');
       }
   };
   
   const handleRemoveAvatar = (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      if(confirm("¿Quitar imagen de avatar?")) {
-          updateThemeColor('avatarImage', '');
+      if (confirm("¿Quitar imagen de avatar?")) {
+          // Use dot notation for nested fields for a direct update.
+          onUpdateField('theme.avatarImage', '');
       }
   };
 
-  const updateThemeColor = (key: string, value: string | number) => {
+  const updateThemeValue = (key: string, value: string | number) => {
       setLocalConfig(prev => ({
           ...prev,
           theme: {
-              ...(prev.theme || {
-                  backgroundColor: '#f5f0e6',
-                  textColor: '#1f2937',
-                  primaryColor: '#a87b51',
-                  secondaryColor: '#4f46e5',
-                  primaryTextColor: '#ffffff',
-                  secondaryTextColor: '#ffffff',
-                  statsTextColor: '#6b7280',
-                  headerTitleColor: '#1f2937',
-                  headerDateColor: '#4b5563',
-                  fontFamily: 'sans',
-                  avatarBackgroundColor: '#374151',
-                  avatarTextColor: '#ffffff',
-                  avatarImage: '',
-                  coverOverlayColor: '#000000',
-                  coverOverlayOpacity: 0.4,
-                  coverBlur: 0
-              }),
+              ...(prev.theme || DEFAULT_EVENT_TEMPLATE.theme!),
               [key]: value
           }
       }));
@@ -422,7 +464,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const totalCapacity = localConfig.participantsCount || 0;
   const totalRegistered = (localConfig.participants || []).filter(p => p.status === 'confirmed').length;
   const remainingSpots = Math.max(0, totalCapacity - totalRegistered);
-  const inputStyle = "w-full px-4 py-3 rounded-lg bg-[#374151] text-white border-none focus:ring-2 focus:ring-[#4f46e5] outline-none transition-all placeholder-gray-400 shadow-inner";
+  const inputStyle = "w-full px-4 py-3 rounded-lg bg-white text-gray-800 border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none transition-all placeholder-gray-400 shadow-sm";
   const labelStyle = "block text-sm font-bold text-gray-700 mb-2";
 
   const hexToRgba = (hex: string, alpha: number) => {
@@ -435,6 +477,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       }
       return hex;
   };
+  
+  const handleDownloadQR = () => {
+    const svg = document.getElementById("QRCode");
+    if (svg) {
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      // FIX: Use window.Image to avoid conflict with the Image icon component imported from lucide-react.
+      const img = new window.Image();
+      img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        if (ctx) {
+          ctx.fillStyle = "white";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          const pngFile = canvas.toDataURL("image/png");
+          const downloadLink = document.createElement("a");
+          downloadLink.download = `qr-album-${localConfig.title.replace(/\s+/g, '_')}.png`;
+          downloadLink.href = pngFile;
+          downloadLink.click();
+        }
+      };
+      img.src = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgData)))}`;
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-gray-100 font-sans flex flex-col md:flex-row">
@@ -582,7 +651,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-3">Imagen de Portada</label>
                                     {localConfig.coverImage ? (
                                         <div className="relative rounded-lg overflow-hidden shadow-md border border-gray-300 group">
-                                            <img src={localConfig.coverImage} alt="Cover" className="w-full h-40 object-cover" />
+                                            <img src={localConfig.coverImage} alt="Cover" className="w-full h-40 object-cover" style={{ objectPosition: `50% ${localConfig.theme?.coverImagePositionY || 50}%` }} />
                                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                                 <label className="cursor-pointer p-2 bg-white rounded-full text-gray-700 hover:bg-gray-100"><Pencil size={16} /><input type="file" accept="image/*" onChange={handleCoverUpload} className="hidden" /></label>
                                                 <button type="button" onClick={handleRemoveCover} className="p-2 bg-white rounded-full text-red-600 hover:bg-red-50 z-20 relative shadow-sm"><Trash size={16} /></button>
@@ -595,8 +664,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                         </label>
                                     )}
                                 </div>
+                                
+                                {localConfig.coverImage && (
+                                  <div className="space-y-4 pt-4 border-t border-gray-100">
+                                      <h5 className="text-sm font-bold text-gray-600">Ajustes de Portada</h5>
+                                      {/* Position Slider */}
+                                      <div>
+                                          <label className="text-xs font-medium text-gray-500 flex justify-between items-center"><span>Posición Vertical</span> <span className="font-bold text-gray-700">{localConfig.theme?.coverImagePositionY || 50}%</span></label>
+                                          <input type="range" min="0" max="100" value={localConfig.theme?.coverImagePositionY || 50} onChange={e => updateThemeValue('coverImagePositionY', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+                                      </div>
+                                      {/* Overlay Opacity Slider */}
+                                      <div>
+                                          <label className="text-xs font-medium text-gray-500 flex justify-between items-center"><span>Opacidad de Superposición</span> <span className="font-bold text-gray-700">{Math.round((localConfig.theme?.coverOverlayOpacity ?? 0.4) * 100)}%</span></label>
+                                          <input type="range" min="0" max="1" step="0.05" value={localConfig.theme?.coverOverlayOpacity ?? 0.4} onChange={e => updateThemeValue('coverOverlayOpacity', parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+                                      </div>
+                                      {/* Blur Slider */}
+                                      <div>
+                                          <label className="text-xs font-medium text-gray-500 flex justify-between items-center"><span>Desenfoque (Blur)</span> <span className="font-bold text-gray-700">{localConfig.theme?.coverBlur || 0}px</span></label>
+                                          <input type="range" min="0" max="20" value={localConfig.theme?.coverBlur || 0} onChange={e => updateThemeValue('coverBlur', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+                                      </div>
+                                  </div>
+                                )}
 
-                                <div className="mb-6">
+
+                                <div className="mb-6 pt-6 border-t border-gray-100 mt-6">
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-3">Avatar / Logo del Evento</label>
                                     <div className="flex items-center gap-6">
                                         {localConfig.theme?.avatarImage ? (
@@ -625,15 +716,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                              <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                                 <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Palette size={20} className="text-pink-600"/>Colores & Tema</h4>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-                                    <ColorPicker label="Fondo Principal" value={localConfig.theme?.backgroundColor} onChange={c => updateThemeColor('backgroundColor', c)} fallback="#f5f0e6" />
-                                    <ColorPicker label="Texto General" value={localConfig.theme?.textColor} onChange={c => updateThemeColor('textColor', c)} fallback="#1f2937" />
-                                    <ColorPicker label="Botón Principal" value={localConfig.theme?.primaryColor} onChange={c => updateThemeColor('primaryColor', c)} fallback="#a87b51" />
-                                    <ColorPicker label="Botón Secundario" value={localConfig.theme?.secondaryColor} onChange={c => updateThemeColor('secondaryColor', c)} fallback="#4f46e5" />
-                                    <ColorPicker label="Texto Botones" value={localConfig.theme?.primaryTextColor} onChange={c => updateThemeColor('primaryTextColor', c)} fallback="#ffffff" />
-                                    <ColorPicker label="Título Cabecera" value={localConfig.theme?.headerTitleColor} onChange={c => updateThemeColor('headerTitleColor', c)} fallback="#1f2937" />
-                                    <ColorPicker label="Fondo Avatar" value={localConfig.theme?.avatarBackgroundColor} onChange={c => updateThemeColor('avatarBackgroundColor', c)} fallback="#374151" />
-                                    <ColorPicker label="Texto Avatar" value={localConfig.theme?.avatarTextColor} onChange={c => updateThemeColor('avatarTextColor', c)} fallback="#ffffff" />
-                                    <ColorPicker label="Overlay Portada" value={localConfig.theme?.coverOverlayColor} onChange={c => updateThemeColor('coverOverlayColor', c)} fallback="#000000" />
+                                    <ColorPicker label="Fondo Principal" value={localConfig.theme?.backgroundColor} onChange={c => updateThemeValue('backgroundColor', c)} fallback="#f5f0e6" />
+                                    <ColorPicker label="Texto General" value={localConfig.theme?.textColor} onChange={c => updateThemeValue('textColor', c)} fallback="#1f2937" />
+                                    <ColorPicker label="Botón Principal" value={localConfig.theme?.primaryColor} onChange={c => updateThemeValue('primaryColor', c)} fallback="#a87b51" />
+                                    <ColorPicker label="Botón Secundario" value={localConfig.theme?.secondaryColor} onChange={c => updateThemeValue('secondaryColor', c)} fallback="#4f46e5" />
+                                    <ColorPicker label="Texto Botones" value={localConfig.theme?.primaryTextColor} onChange={c => updateThemeValue('primaryTextColor', c)} fallback="#ffffff" />
+                                    <ColorPicker label="Título Cabecera" value={localConfig.theme?.headerTitleColor} onChange={c => updateThemeValue('headerTitleColor', c)} fallback="#1f2937" />
+                                    <ColorPicker label="Fondo Avatar" value={localConfig.theme?.avatarBackgroundColor} onChange={c => updateThemeValue('avatarBackgroundColor', c)} fallback="#374151" />
+                                    <ColorPicker label="Texto Avatar" value={localConfig.theme?.avatarTextColor} onChange={c => updateThemeValue('avatarTextColor', c)} fallback="#ffffff" />
+                                    <ColorPicker label="Overlay Portada" value={localConfig.theme?.coverOverlayColor} onChange={c => updateThemeValue('coverOverlayColor', c)} fallback="#000000" />
                                 </div>
                              </div>
                          </div>
@@ -644,7 +735,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                  <div className="rounded-xl overflow-hidden shadow-2xl border border-gray-200" style={{ backgroundColor: localConfig.theme?.backgroundColor || '#f5f0e6' }}>
                                      {/* Mock Header */}
                                      <div className="relative h-32">
-                                          <div className="absolute inset-0 bg-gray-300" style={{ backgroundImage: localConfig.coverImage ? `url(${localConfig.coverImage})` : 'none', backgroundSize: 'cover' }} />
+                                          <div className="absolute inset-0 bg-gray-300" style={{ backgroundImage: localConfig.coverImage ? `url(${localConfig.coverImage})` : 'none', backgroundSize: 'cover', backgroundPosition: `50% ${localConfig.theme?.coverImagePositionY || 50}%`, filter: `blur(${localConfig.theme?.coverBlur || 0}px)` }} />
                                           <div className="absolute inset-0" style={{ backgroundColor: hexToRgba(localConfig.theme?.coverOverlayColor || '#000000', localConfig.theme?.coverOverlayOpacity ?? 0.4) }} />
                                           <div className="absolute -bottom-8 left-6">
                                               {localConfig.theme?.avatarImage ? (
@@ -701,6 +792,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                  <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}?event=${localConfig.publicToken}`)} className="text-xs font-bold bg-white text-blue-600 px-3 py-1 rounded border border-blue-200 hover:bg-blue-50">Copiar Enlace</button>
                              </div>
                          </div>
+                         <div className="mt-8 pt-6 border-t border-gray-200">
+                            <h4 className="text-md font-bold text-gray-800 mb-4 flex items-center gap-2"><QrCode size={20} /> Código QR de Acceso Rápido</h4>
+                            <div className="flex flex-col md:flex-row items-center gap-6 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                                    <QRCode
+                                        id="QRCode"
+                                        value={`${window.location.origin}?event=${localConfig.publicToken}`}
+                                        size={128}
+                                        viewBox={`0 0 128 128`}
+                                    />
+                                </div>
+                                <div className="flex-1 text-center md:text-left">
+                                    <p className="text-sm text-gray-600 mb-4">
+                                        Usa este código QR para que los invitados accedan al álbum al instante. Ideal para tarjetas, invitaciones o pantallas en el evento.
+                                    </p>
+                                    <button
+                                        onClick={handleDownloadQR}
+                                        className="inline-flex items-center gap-2 px-5 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-lg transition-colors font-bold text-sm shadow-md"
+                                    >
+                                        <Download size={16} />
+                                        Descargar QR
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                      </div>
                  </div>
             )}
@@ -819,22 +935,57 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                  <div className="p-8 animate-fade-in h-full flex flex-col relative">
                     <div className="flex flex-col md:flex-row items-start md:items-center gap-4 mb-6 pb-4 border-b border-gray-200">
                         <div className="flex-1"><h3 className="text-lg font-bold text-gray-800">Gestión de Imágenes</h3><p className="text-gray-500 text-sm mt-1">Organiza, oculta o elimina el contenido del álbum.</p></div>
-                        <div className="flex bg-gray-100 p-1 rounded-lg gap-1">
-                             <button onClick={() => { setGalleryView('active'); setSelectedIds([]); }} className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${galleryView === 'active' ? 'bg-white text-[#4f46e5] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Grid size={16} />Activa</button>
-                             <button onClick={() => { setGalleryView('archived'); setSelectedIds([]); }} className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${galleryView === 'archived' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><EyeOff size={16} />Ocultos</button>
-                             <button onClick={() => { setGalleryView('trash'); setSelectedIds([]); }} className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${galleryView === 'trash' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Trash2 size={16} />Papelera</button>
+                        <div className="flex items-center gap-3">
+                             <GoogleDriveImporter onFilesSelected={onDriveImport} isProcessing={isProcessing} />
+                             <div className="flex bg-gray-100 p-1 rounded-lg gap-1">
+                                 <button onClick={() => { setGalleryView('active'); setSelectedIds([]); }} className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${galleryView === 'active' ? 'bg-white text-[#4f46e5] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Grid size={16} />Activa</button>
+                                 <button onClick={() => { setGalleryView('archived'); setSelectedIds([]); }} className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${galleryView === 'archived' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><EyeOff size={16} />Ocultos</button>
+                                 <button onClick={() => { setGalleryView('trash'); setSelectedIds([]); }} className={`px-4 py-2 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${galleryView === 'trash' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Trash2 size={16} />Papelera</button>
+                            </div>
                         </div>
                     </div>
                     {filterParticipantId && (
                         <div className="mb-4 bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center justify-between animate-fade-in"><div className="flex items-center gap-2 text-blue-700"><Filter size={18} /><span className="text-sm font-bold">Filtrando por usuario: {(localConfig.participants || []).find(p => p.id === filterParticipantId)?.name || 'Usuario'}</span></div><button onClick={() => setFilterParticipantId(null)} className="text-xs bg-white border border-blue-200 text-blue-600 px-3 py-1.5 rounded hover:bg-blue-100 font-bold">Limpiar Filtro</button></div>
                     )}
-                    <div className="flex justify-between items-center mb-4 pb-2 sticky top-0 bg-white z-10 pt-2">
-                        <div className="flex items-center gap-4"><span className={`bg-opacity-10 px-3 py-1 rounded-full text-xs font-bold border ${galleryView === 'active' ? 'bg-blue-500 text-blue-700 border-blue-200' : galleryView === 'archived' ? 'bg-orange-500 text-orange-700 border-orange-200' : 'bg-red-500 text-red-700 border-red-200'}`}>{displayedPhotos.length} archivos {galleryView === 'trash' ? 'eliminados' : galleryView === 'archived' ? 'ocultos' : 'activos'}</span></div>
+                    
+                    {/* NEW HEADER BAR WITH BULK ACTIONS */}
+                    <div className="flex flex-col md:flex-row justify-between items-center mb-4 pb-2 sticky top-0 bg-white z-10 pt-2 gap-3 shadow-sm border-b border-gray-100">
+                        <div className="flex items-center gap-4">
+                            <span className={`bg-opacity-10 px-3 py-1 rounded-full text-xs font-bold border ${galleryView === 'active' ? 'bg-blue-500 text-blue-700 border-blue-200' : galleryView === 'archived' ? 'bg-orange-500 text-orange-700 border-orange-200' : 'bg-red-500 text-red-700 border-red-200'}`}>
+                                {displayedPhotos.length} archivos {galleryView === 'trash' ? 'eliminados' : galleryView === 'archived' ? 'ocultos' : 'activos'}
+                            </span>
+                            {selectedIds.length > 0 && (
+                                <span className="font-bold text-[#4f46e5] text-sm animate-fade-in">
+                                    {selectedIds.length} seleccionados
+                                </span>
+                            )}
+                        </div>
+
                         <div className="flex items-center gap-3">
-                             {galleryView === 'trash' && displayedPhotos.length > 0 && (<button onClick={onEmptyTrash} disabled={isProcessing} className="flex items-center gap-2 text-sm font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-md transition-colors border border-transparent hover:border-red-100 mr-2 disabled:opacity-50 disabled:cursor-not-allowed" title="Eliminar todos los archivos permanentemente">{isProcessing ? <Loader2 className="animate-spin" size={16}/> : <AlertTriangle size={16} />}{isProcessing ? 'Vaciando...' : 'Vaciar Papelera'}</button>)}
-                            <button onClick={toggleSelectAll} className="flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-[#4f46e5] transition-colors">{displayedPhotos.length > 0 && selectedIds.length === displayedPhotos.length ? (<CheckSquare size={20} className="text-[#4f46e5]" />) : (<Square size={20} />)}Seleccionar Todo</button>
+                            {/* DYNAMIC BULK ACTIONS - VISIBLE WHEN SELECTED */}
+                            {selectedIds.length > 0 && (
+                                <div className="flex items-center gap-2 mr-2 animate-fade-in border-r border-gray-200 pr-4">
+                                    {galleryView === 'trash' ? (
+                                        <>
+                                            <button onClick={() => { onBulkRestore(selectedIds); setSelectedIds([]); }} className="px-3 py-1.5 bg-green-100 text-green-700 rounded-md font-bold text-xs hover:bg-green-200 transition-colors flex items-center gap-1 shadow-sm"><RotateCcw size={14}/> Restaurar</button>
+                                            <button onClick={executeBulkDelete} disabled={isProcessing} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-md font-bold text-xs hover:bg-red-200 transition-colors flex items-center gap-1 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 size={14}/> {isProcessing ? '...' : 'Eliminar'}</button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button onClick={() => executeBulkArchive(true)} className="px-3 py-1.5 bg-orange-100 text-orange-700 rounded-md font-bold text-xs hover:bg-orange-200 transition-colors flex items-center gap-1 shadow-sm"><EyeOff size={14}/> Ocultar</button>
+                                            <button onClick={executeBulkDelete} className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md font-bold text-xs hover:bg-gray-200 transition-colors flex items-center gap-1 shadow-sm"><Trash size={14}/> Papelera</button>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                            
+                            <button onClick={toggleSelectAll} className="flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-[#4f46e5] transition-colors">
+                                {displayedPhotos.length > 0 && selectedIds.length === displayedPhotos.length ? (<CheckSquare size={20} className="text-[#4f46e5]" />) : (<Square size={20} />)}
+                                Seleccionar Todo
+                            </button>
                         </div>
                     </div>
+
                     <div className="flex-1 overflow-y-auto pr-2 pb-20">
                          {displayedPhotos.length === 0 ? (
                             <div className="h-64 flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50">
@@ -861,19 +1012,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </div>
                         )}
                     </div>
-                    {selectedIds.length > 0 && (
-                         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#1f2937] text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-6 z-40 animate-fade-in-up border border-gray-700">
-                            <div className="flex items-center gap-2 border-r border-gray-600 pr-6"><span className="font-bold text-lg">{selectedIds.length}</span><span className="text-sm text-gray-400">seleccionados</span></div>
-                            <div className="flex items-center gap-2">
-                                {galleryView === 'active' || galleryView === 'archived' ? (
-                                    <><button onClick={() => executeBulkArchive(true)} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-700 rounded-md transition-colors text-sm font-medium text-orange-300 hover:text-orange-200" title="Ocultar"><EyeOff size={16} />Ocultar</button><div className="w-px h-6 bg-gray-600 mx-2"></div><button onClick={executeBulkDelete} className="flex items-center gap-2 px-3 py-1.5 hover:bg-red-900/50 rounded-md transition-colors text-sm font-medium text-red-400 hover:text-red-300" title="Mover a papelera"><Trash size={16} />Papelera</button></>
-                                ) : (
-                                    <><button onClick={() => { onBulkRestore(selectedIds); setSelectedIds([]); }} className="flex items-center gap-2 px-3 py-1.5 hover:bg-green-900/50 rounded-md transition-colors text-sm font-medium text-green-400 hover:text-green-300" title="Restaurar"><RotateCcw size={16} />Restaurar</button><div className="w-px h-6 bg-gray-600 mx-2"></div><button onClick={executeBulkDelete} disabled={isProcessing} className="flex items-center gap-2 px-3 py-1.5 hover:bg-red-900/50 rounded-md transition-colors text-sm font-medium text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed" title="Eliminar definitivamente">{isProcessing ? <Loader2 className="animate-spin" size={16}/> : <Trash2 size={16} />}{isProcessing ? 'Procesando...' : 'Eliminar'}</button></>
-                                )}
-                            </div>
-                            <button onClick={() => setSelectedIds([])} className="ml-2 p-1 hover:bg-gray-700 rounded-full text-gray-500 hover:text-white transition-colors"><XIcon size={16} /></button>
-                        </div>
-                    )}
                 </div>
              )}
             </div>
