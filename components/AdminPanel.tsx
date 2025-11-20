@@ -164,6 +164,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Preview Modal State
   const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null);
   
+  // Delete Confirmation Modal State (Event)
+  const [showDeleteEventConfirm, setShowDeleteEventConfirm] = useState(false);
+
   // Delete Confirmation Modal State (Participant)
   const [participantToDelete, setParticipantToDelete] = useState<Participant | null>(null);
   // Delete Confirmation Modal State (Photo)
@@ -315,13 +318,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const toggleSelectAll = () => {
       const targetPhotos = displayedPhotos;
+      const targetIds = targetPhotos.map(p => p.id);
+      
       // Verificamos si TODOS los visibles ya están seleccionados
       const allVisibleSelected = targetPhotos.length > 0 && targetPhotos.every(p => selectedIds.includes(p.id));
       
       if (allVisibleSelected) {
-          setSelectedIds([]); // Desmarcar todo
+          // DESELECT OPERATION: Remove only the displayed photos from selection
+          setSelectedIds(prev => prev.filter(id => !targetIds.includes(id)));
       } else {
-          setSelectedIds(targetPhotos.map(p => p.id)); // Marcar todo
+          // SELECT OPERATION: Add displayed photos to selection (using Set to avoid duplicates)
+          setSelectedIds(prev => Array.from(new Set([...prev, ...targetIds])));
       }
   };
   
@@ -334,14 +341,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       
       // Si estamos en papelera, es borrado permanente
       if (galleryView === 'trash') {
-         if(confirm(`¿Estás seguro de eliminar permanentemente ${selectedIds.length} elementos? Esta acción no se puede deshacer.`)) {
-             try {
-                 await onBulkPermanentDelete(selectedIds);
-                 setSelectedIds([]);
-             } catch (e) {
-                 // Error already handled in App.tsx alert
-                 console.error(e);
-             }
+         // Ya no usamos confirm nativo, asumimos que el usuario sabe lo que hace o implementamos modal separado si es critico
+         // Para bulk delete en trash, es mejor tener feedback visual
+         try {
+             await onBulkPermanentDelete(selectedIds);
+             setSelectedIds([]);
+         } catch (e) {
+             // Error handled in App.tsx
+             console.error(e);
          }
       } else {
           // Soft delete
@@ -459,7 +466,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="flex gap-3">
                 {activeTab === 'general' && (
                    <button 
-                        onClick={() => onDeleteEvent(activeEvent.id)}
+                        onClick={() => setShowDeleteEventConfirm(true)}
                         className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
                     >
                         <Trash2 size={16} /> Eliminar Álbum
@@ -479,7 +486,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           
           {activeTab === 'appearance' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                
+                {/* ... existing appearance code ... */}
                 {/* Left Column: Editor */}
                 <div className="lg:col-span-7 space-y-6">
                     
@@ -1010,7 +1017,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
           )}
-
+          
           {activeTab === 'gallery' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[calc(100vh-150px)]">
                 {/* Header / Toolbar */}
@@ -1148,8 +1155,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                     )}
                 </div>
-                
-                {/* Empty Trash Button REMOVED - Replaced by top bar actions */}
             </div>
           )}
           
@@ -1237,6 +1242,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         </div>
       </main>
+
+      {/* CONFIRMATION MODAL FOR EVENT DELETION */}
+      {showDeleteEventConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !isProcessing && setShowDeleteEventConfirm(false)} />
+              <div className="relative bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl animate-fade-in-up text-center">
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <AlertTriangle size={32} className="text-red-600" />
+                  </div>
+                  
+                  <h3 className="text-2xl font-bold text-gray-800 mb-2">¿Eliminar este Álbum?</h3>
+                  <p className="text-gray-600 mb-8">
+                      Estás a punto de eliminar <strong>{activeEvent.title}</strong>. 
+                      Esta acción borrará todas las fotos y datos asociados de forma permanente. No se puede deshacer.
+                  </p>
+
+                  <div className="flex gap-3 justify-center">
+                      <button 
+                          onClick={() => setShowDeleteEventConfirm(false)}
+                          disabled={isProcessing}
+                          className="px-6 py-3 rounded-lg bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 transition-colors"
+                      >
+                          Cancelar
+                      </button>
+                      <button 
+                          onClick={async () => {
+                              await onDeleteEvent(activeEvent.id);
+                              setShowDeleteEventConfirm(false);
+                          }}
+                          disabled={isProcessing}
+                          className="px-6 py-3 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition-colors shadow-lg shadow-red-200 flex items-center gap-2"
+                      >
+                          {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
+                          Sí, Eliminar
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* Photo Details Modal */}
       {previewPhoto && (

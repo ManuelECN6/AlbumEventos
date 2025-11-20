@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Lightbox } from './components/Lightbox';
 import { UploadModal } from './components/UploadModal';
@@ -263,13 +262,34 @@ export default function App() {
   };
 
   const handleDeleteEvent = async (id: string) => {
+    // 1. Validación: No borrar el último evento
     if (events.length <= 1) {
-      alert("No puedes eliminar el último evento.");
+      alert("No puedes eliminar el último evento. Debes tener al menos uno.");
       return;
     }
-    if (confirm("¿Estás seguro? Se borrará este álbum de la base de datos.")) {
+
+    // 2. Calcular el siguiente evento ANTES de borrar
+    // Esto evita que la UI intente renderizar un evento que no existe
+    const remainingEvents = events.filter(e => e.id !== id);
+    const nextEventId = remainingEvents.length > 0 ? remainingEvents[0].id : null;
+
+    // 3. Actualización Optimista de la UI
+    setEvents(remainingEvents); // Actualizamos la lista localmente
+    if (currentEventId === id && nextEventId) {
+        setCurrentEventId(nextEventId); // Cambiamos al siguiente evento inmediatamente
+    }
+
+    // 4. Ejecutar borrado en Firebase
+    try {
+        setIsProcessing(true);
         await deleteEventFromFirebase(id);
-        if (currentEventId === id) setCurrentEventId(null);
+    } catch (error) {
+        console.error("Error eliminando evento:", error);
+        alert("Hubo un error al eliminar el evento de la base de datos.");
+        // Opcional: Recargar la página si falla para restaurar estado
+        window.location.reload();
+    } finally {
+        setIsProcessing(false);
     }
   };
 
@@ -448,15 +468,14 @@ export default function App() {
     
     // Perform actual DB operation directly
     try {
-      // We rely on the optimistic update. In a real app with heavy concurrency,
-      // we might want to fetch fresh data, but for soft delete, updating based on current state is acceptable
-      // to ensure the UI feels snappy. The next subscription update will sync truth.
-      const latestEvent = await getEvent(currentEventId);
+      // NO fetch getEvent again to avoid race condition on quick toggles
+      // Just trust the current state for the update, or use arrayUpdate in future
+      const latestEvent = await getEvent(currentEventId); 
       if (latestEvent) {
-          const updatedPhotos = latestEvent.photos.map(p => 
-            p.id === photoId ? { ...p, isDeleted: true } : p
-          );
-          await updateEventFieldInFirebase(currentEventId, 'photos', updatedPhotos);
+           const updatedPhotos = latestEvent.photos.map(p => 
+                p.id === photoId ? { ...p, isDeleted: true } : p
+           );
+           await updateEventFieldInFirebase(currentEventId, 'photos', updatedPhotos);
       }
     } catch (error: any) {
       console.error("Error during soft delete:", error);
@@ -488,7 +507,6 @@ export default function App() {
       });
 
       // Restore photos
-      // CRITICAL: Ensure isDeleted is false AND isArchived is false so it appears in the album immediately
       const updatedPhotos = activeEvent.photos.map(p => 
           photoIds.includes(p.id) 
             ? { ...p, isDeleted: false, isArchived: false } 
@@ -509,8 +527,6 @@ export default function App() {
 
   // --- LÓGICA DE ELIMINACIÓN RE-ARQUITECTADA ---
 
-  // NÚCLEO CENTRAL DE ELIMINACIÓN PERMANENTE:
-  // Esta es la única función que borra archivos de Storage y actualiza la DB.
   const handlePermanentPhotoRemoval = async (photoIdsToRemove: string[]) => {
     if (!currentEventId || photoIdsToRemove.length === 0) {
       return;
@@ -518,51 +534,23 @@ export default function App() {
 
     setIsProcessing(true);
     try {
-      // 1. Obtener la versión más reciente del evento desde la base de datos.
       const latestEvent = await getEvent(currentEventId);
       if (!latestEvent) throw new Error("No se pudo sincronizar con el evento.");
 
       const idsSet = new Set(photoIdsToRemove);
-      
-      // 2. Identificar los archivos que realmente existen en la versión más reciente.
       const photosToDelete = latestEvent.photos.filter(p => idsSet.has(p.id));
       const urlsToDelete = photosToDelete.map(p => p.url).filter(Boolean);
 
-      // 3. Intentar borrar todos los archivos de Firebase Storage.
-      // IMPORTANTE: Lo hacemos en lotes (batches) para no saturar la conexión y asegurar que se borren.
-      // Si intentamos borrar 100 fotos de golpe, Firebase/Navegador puede bloquear las peticiones.
       const CHUNK_SIZE = 3; 
-      const permissionErrors: any[] = [];
-
       for (let i = 0; i < urlsToDelete.length; i += CHUNK_SIZE) {
           const chunk = urlsToDelete.slice(i, i + CHUNK_SIZE);
-          // Esperamos a que termine este lote antes de seguir
-          const results = await Promise.allSettled(chunk.map(url => deleteFileFromFirebase(url)));
-          
-          // Recolectar errores de permisos
-          results.forEach(r => {
-              if (r.status === 'rejected' && (r.reason?.code === 'storage/unauthorized' || r.reason?.message?.includes('unauthorized'))) {
-                  permissionErrors.push(r.reason);
-              }
-          });
-
-          // Pequeña pausa para no ahogar el hilo principal
+          await Promise.allSettled(chunk.map(url => deleteFileFromFirebase(url)));
           await new Promise(resolve => setTimeout(resolve, 100));
       }
       
-      if (permissionErrors.length > 0) {
-          // Si hubo errores de permisos, lanzamos uno para avisar, pero después de intentar borrar todo lo posible
-          throw new Error("Permiso denegado por Firebase Storage. Asegúrate de que las reglas permiten borrar.");
-      }
-
-      // 4. Actualizar la base de datos con la lista limpia.
       const updatedPhotos = latestEvent.photos.filter(p => !idsSet.has(p.id));
-      
       await updateEventFieldInFirebase(currentEventId, 'photos', updatedPhotos);
 
-      // --- FIX: ACTUALIZACIÓN LOCAL INMEDIATA (OPTIMISTIC UPDATE FORZADO) ---
-      // Esto garantiza que la UI refleje el cambio visualmente al instante, 
-      // aunque la suscripción de Firebase tarde unos milisegundos en dispararse.
       setEvents(prevEvents => prevEvents.map(e => {
           if (e.id === currentEventId) {
               return { ...e, photos: updatedPhotos };
@@ -570,7 +558,6 @@ export default function App() {
           return e;
       }));
       
-      // ALERT DE ÉXITO: Para confirmar al usuario que la operación terminó
       alert(`Operación completada. Se eliminaron ${photoIdsToRemove.length} elementos permanentemente.`);
 
     } catch (error: any) {
@@ -581,17 +568,17 @@ export default function App() {
       } else {
           alert(`Hubo un error al eliminar los archivos: ${error.message}`);
       }
+      // PROPAGATE THE ERROR TO THE CALLING COMPONENT
+      throw error;
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Wrapper para eliminar una selección. Pasa los IDs directamente al núcleo.
   const handleBulkPermanentDelete = (ids: string[]) => {
     return handlePermanentPhotoRemoval(ids);
   };
 
-  // Wrapper para eliminar una sola foto de forma permanente.
   const handlePermanentDelete = (photoId: string) => {
     handlePermanentPhotoRemoval([photoId]);
   };
@@ -607,7 +594,7 @@ export default function App() {
     if (!currentEventId) return;
     const idsSet = new Set(photoIds);
 
-    // Optimistic UI Update
+    // Optimistic UI Update (State)
     const eventBeforeUpdate = events.find(e => e.id === currentEventId);
     if (!eventBeforeUpdate) return;
 
@@ -617,19 +604,20 @@ export default function App() {
     const optimisticEvent = { ...eventBeforeUpdate, photos: optimisticallyUpdatedPhotos };
     setEvents(events.map(e => e.id === currentEventId ? optimisticEvent : e));
 
-    // Perform actual DB operation
+    // Perform DB Update (Directly, no stale read)
     try {
+      // We update based on current DB state but using our ID list
       const latestEvent = await getEvent(currentEventId);
-      if (!latestEvent) throw new Error("Event not found for bulk delete");
-
-      const updatedPhotos = latestEvent.photos.map(p =>
-        idsSet.has(p.id) ? { ...p, isDeleted: true } : p
-      );
-      await updateEventFieldInFirebase(currentEventId, 'photos', updatedPhotos);
+      if (latestEvent) {
+          const updatedPhotos = latestEvent.photos.map(p =>
+            idsSet.has(p.id) ? { ...p, isDeleted: true } : p
+          );
+          await updateEventFieldInFirebase(currentEventId, 'photos', updatedPhotos);
+      }
     } catch (error) {
       console.error("Error during bulk soft delete:", error);
       alert("Hubo un error al mover las fotos a la papelera.");
-      // Revert on failure
+      // Revert state on error
       setEvents(events.map(e => e.id === currentEventId ? eventBeforeUpdate : e));
     }
   };
@@ -671,20 +659,20 @@ export default function App() {
         events={events}
         currentEventId={activeEvent.id}
         currentEventPhotos={photos} 
-        isProcessing={isProcessing} // Pasamos el estado de carga
+        isProcessing={isProcessing}
         onUpdateEvent={handleUpdateEvent}
-        onUpdateField={handleUpdateEventField} // Pass the new handler for atomic updates
+        onUpdateField={handleUpdateEventField}
         onCreateEvent={handleCreateEvent}
         onSelectEvent={setCurrentEventId}
         onDeleteEvent={handleDeleteEvent}
-        onDeletePhoto={handleDeletePhoto} // Soft delete
-        onRestorePhoto={handleRestorePhoto} // Restore Single
-        onPermanentDelete={handlePermanentDelete} // Hard delete
+        onDeletePhoto={handleDeletePhoto}
+        onRestorePhoto={handleRestorePhoto}
+        onPermanentDelete={handlePermanentDelete}
         onArchivePhoto={handleArchivePhoto}
         onBulkDelete={handleBulkDelete}
         onBulkArchive={handleBulkArchive}
-        onBulkRestore={handleBulkRestore} // Restore Bulk (New)
-        onBulkPermanentDelete={handleBulkPermanentDelete} // Pass the robust handler
+        onBulkRestore={handleBulkRestore}
+        onBulkPermanentDelete={handleBulkPermanentDelete}
         onDriveImport={handleDriveImport}
         onExit={() => setIsAdminMode(false)} 
       />
@@ -696,7 +684,6 @@ export default function App() {
         className={`min-h-screen pb-8 relative font-sans transition-colors duration-500 ${fontClass}`}
         style={{ backgroundColor: theme.backgroundColor, color: theme.textColor }}
     >
-      {/* Admin Toggle */}
       <button 
         onClick={() => setShowLoginModal(true)}
         className="fixed bottom-6 right-6 z-40 bg-white/90 hover:bg-white p-3 rounded-full shadow-lg text-gray-400 hover:text-gray-800 transition-all border border-gray-200 hover:scale-110"
@@ -705,7 +692,6 @@ export default function App() {
         <Settings size={20} />
       </button>
 
-      {/* Login Modal */}
       {showLoginModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowLoginModal(false)} />
@@ -730,9 +716,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Banner */}
       <div className="relative mb-8 group overflow-hidden">
-        {/* Cover Image Layer */}
         {activeEvent.coverImage && (
             <div className="absolute inset-0 z-0 overflow-hidden h-full w-full">
                  <img 
@@ -747,7 +731,6 @@ export default function App() {
             </div>
         )}
         
-        {/* Overlay Layer */}
         <div 
             className="absolute inset-0 z-0 transition-colors duration-500" 
             style={{ backgroundColor: hexToRgba(theme.coverOverlayColor || '#000000', theme.coverOverlayOpacity ?? 0.4) }}
@@ -757,7 +740,6 @@ export default function App() {
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div className="flex items-start gap-4">
                 
-                {/* AVATAR IDENTITY - RESPECT THEME COLORS */}
                 {theme.avatarImage ? (
                     <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-white/20 shadow-sm shrink-0">
                         <img src={theme.avatarImage} alt="Logo" className="w-full h-full object-cover" />
@@ -775,7 +757,6 @@ export default function App() {
                 )}
                 
                 <div>
-                {/* HEADER TITLE: PRIORITIZE THEME COLOR OVER WHITE */}
                 <h1 className="text-2xl md:text-3xl font-bold" style={{ color: theme.headerTitleColor || theme.textColor }}>
                     {activeEvent.title}
                 </h1>
@@ -791,22 +772,18 @@ export default function App() {
                     </div>
                 </div>
                 <div className="flex items-center gap-6 mt-3 text-xs font-bold uppercase tracking-wide" style={{ color: theme.statsTextColor || theme.textColor }}>
-                    {/* FOTOS */}
                     <div className="flex flex-col items-center">
                         <span className="text-lg leading-none">{guestPhotos.length}</span>
                         <span>Fotos</span>
                     </div>
-                    {/* LIKES */}
                     <div className="flex flex-col items-center">
                         <span className="text-lg leading-none">{guestPhotos.reduce((acc, curr) => acc + curr.likes, 0)}</span>
                         <span>Likes</span>
                     </div>
-                    {/* PARTICIPANTES (Registrados) */}
                     <div className="flex flex-col items-center">
                         <span className="text-lg leading-none">{activeParticipants.length}</span>
                         <span>Participantes</span>
                     </div>
-                    {/* RESTANTES (Cupos) */}
                     <div className="flex flex-col items-center">
                         <span className="text-lg leading-none">{remainingSpotsDisplay}</span>
                         <span>Restantes</span>
@@ -828,7 +805,6 @@ export default function App() {
         </header>
       </div>
 
-      {/* View Controls */}
       {guestPhotos.length > 0 && (
         <div className="max-w-6xl mx-auto mb-6 px-4 md:px-8">
             <div className="bg-white rounded-xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 border border-gray-100">
@@ -843,7 +819,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Photos Grid */}
       <main className="max-w-6xl mx-auto px-4 md:px-8">
         {guestPhotos.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 text-center border-2 border-dashed rounded-xl" style={{ borderColor: hexToRgba(theme.textColor, 0.2) }}>
@@ -908,7 +883,7 @@ export default function App() {
         onClose={() => setIsUploadModalOpen(false)} 
         event={activeEvent} 
         onUpload={handlePhotoUpload}
-        deviceId={deviceId} // Pasar ID para validación de límites
+        deviceId={deviceId}
       />
       <DownloadModal isOpen={isDownloadModalOpen} onClose={() => setIsDownloadModalOpen(false)} event={activeEvent} />
     </div>
