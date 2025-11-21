@@ -810,7 +810,7 @@ export default function App() {
             <div className="flex gap-3 w-full md:w-auto mt-2 md:mt-0">
                 {activeEvent.allowUploads && (
                 <button onClick={() => setIsUploadModalOpen(true)} style={{ backgroundColor: theme.primaryColor, color: theme.primaryTextColor }} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-full font-medium shadow-md transition-all hover:opacity-90">
-                    <Camera size={18} /> Subir Foto
+                    <Camera size={18} /> Subir
                 </button>
                 )}
                 <button onClick={() => setIsDownloadModalOpen(true)} style={{ backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor }} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-full font-medium shadow-md transition-all hover:opacity-90">
@@ -851,7 +851,7 @@ export default function App() {
                 <p className="text-lg opacity-70 max-w-md mb-8" style={{ color: theme.textColor }}>Sé el primero en compartir un momento especial.</p>
                 {activeEvent.allowUploads && (
                     <button onClick={() => setIsUploadModalOpen(true)} className="flex items-center gap-2 px-8 py-4 rounded-full font-bold shadow-lg hover:scale-105 transition-all" style={{ backgroundColor: theme.primaryColor, color: theme.primaryTextColor }}>
-                        <Plus size={20} /> Subir Primer Recuerdo
+                        <Plus size={20} /> Subir
                     </button>
                 )}
             </div>

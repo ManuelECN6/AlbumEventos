@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
 import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Pencil, Check, X as XIcon, LogOut, FolderPlus, Folder, Users, Search, Video, Grid, Eye, EyeOff, Lock, Link as LinkIcon, Copy, RefreshCw, UserCheck, ExternalLink, Menu, Maximize2, Calendar, Clock, CheckSquare, Square, UserPlus, Mail, BadgeCheck, AlertCircle, Palette, Upload, Type, Cloud, FileText, QrCode, Download, Loader2, HelpCircle, PieChart, Camera, PlayCircle, RotateCcw, Trash2, Filter, AlertTriangle, UserX, Heart, ImageIcon, Sliders, Droplet, Zap, User, CheckCircle, Info } from 'lucide-react';
@@ -183,6 +181,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   
   // Bulk Selection State
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  // Feedback State
+  const [isLinkCopied, setIsLinkCopied] = useState(false);
 
   // Participants State
   const [newParticipantName, setNewParticipantName] = useState('');
@@ -1664,10 +1665,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   {window.location.origin}?event={activeEvent.publicToken || activeEvent.id}
                               </p>
                               <button 
-                                onClick={() => navigator.clipboard.writeText(`${window.location.origin}?event=${activeEvent.publicToken || activeEvent.id}`)}
-                                className="bg-white text-blue-600 border border-blue-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-50 transition-colors"
+                                onClick={() => {
+                                    navigator.clipboard.writeText(`${window.location.origin}?event=${activeEvent.publicToken || activeEvent.id}`);
+                                    setIsLinkCopied(true);
+                                    setTimeout(() => setIsLinkCopied(false), 2000);
+                                }}
+                                className={`bg-white border px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${isLinkCopied ? 'text-green-600 border-green-200 bg-green-50' : 'text-blue-600 border-blue-200 hover:bg-blue-50'}`}
                               >
-                                  Copiar Enlace
+                                  {isLinkCopied ? (
+                                      <>
+                                          <Check size={18} /> ¡Enlace Copiado!
+                                      </>
+                                  ) : (
+                                      <>
+                                         Copiar Enlace
+                                      </>
+                                  )}
                               </button>
                           </div>
                       </div>
