@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Lightbox } from './components/Lightbox';
 import { UploadModal } from './components/UploadModal';
@@ -240,6 +239,58 @@ export default function App() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
+
+  // --- LISTENER PARA ACCESO OCULTO (BACKDOOR) ---
+  useEffect(() => {
+    let buffer = '';
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+        // 1. Tecla F2 (Simple y directa)
+        if (e.key === 'F2') {
+            e.preventDefault();
+            setShowLoginModal(true);
+            return;
+        }
+
+        // 2. Combinación Alt + L (Login)
+        if (e.altKey && e.key.toLowerCase() === 'l') {
+            e.preventDefault();
+            setShowLoginModal(true);
+            return;
+        }
+
+        // 3. "Palabra Mágica" (Escribir 'admin' o 'login' en cualquier parte)
+        // Ignorar si el usuario está escribiendo en un input
+        if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+            return;
+        }
+
+        // Solo registrar letras
+        if (e.key.length === 1 && /[a-zA-Z]/.test(e.key)) {
+            buffer += e.key.toLowerCase();
+            // Mantener el buffer corto para no consumir memoria
+            if (buffer.length > 10) buffer = buffer.slice(-10);
+
+            if (buffer.endsWith('admin') || buffer.endsWith('login')) {
+                setShowLoginModal(true);
+                buffer = ''; // Reset
+            }
+        } else {
+            // Resetear buffer si presiona teclas especiales para evitar falsos positivos
+            if (e.key !== 'Shift') buffer = '';
+        }
+    };
+
+    // Mantener soporte para URL param ?admin=true
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('admin') === 'true') {
+        setShowLoginModal(true);
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
 
   // --- ACCIONES (CONECTADAS A FIREBASE) ---
 
@@ -655,13 +706,7 @@ export default function App() {
         className={`min-h-screen pb-8 relative font-sans transition-colors duration-500 ${fontClass}`}
         style={{ backgroundColor: theme.backgroundColor, color: theme.textColor }}
     >
-      <button 
-        onClick={() => setShowLoginModal(true)}
-        className="fixed bottom-6 right-6 z-40 bg-white/90 hover:bg-white p-3 rounded-full shadow-lg text-gray-400 hover:text-gray-800 transition-all border border-gray-200 hover:scale-110"
-        title="Acceso Administrador"
-      >
-        <Settings size={20} />
-      </button>
+      {/* BOTON DE ADMIN ELIMINADO - Acceso mediante F2, Alt+L o escribiendo 'admin' */}
 
       {showLoginModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
