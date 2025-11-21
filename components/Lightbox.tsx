@@ -64,12 +64,12 @@ export const Lightbox: React.FC<LightboxProps> = ({
     .slice(0, 3);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-fade-in overflow-y-auto select-none">
       
       {/* Close Button (Outside) */}
       <button 
         onClick={onClose} 
-        className="fixed top-4 right-4 bg-gray-800/50 hover:bg-gray-800 text-white rounded-full p-2 transition-colors z-[60]"
+        className="fixed top-4 right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-2 transition-colors z-[60]"
       >
         <X size={24} />
       </button>
@@ -78,7 +78,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
       {hasPrev && (
         <button 
           onClick={(e) => { e.stopPropagation(); onPrev(); }}
-          className="fixed left-4 top-1/2 -translate-y-1/2 bg-gray-800/50 hover:bg-gray-800 text-white p-3 rounded-full transition-all z-40 hidden md:flex"
+          className="fixed left-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full transition-all z-40 hidden md:flex"
         >
           <ChevronLeft size={24} />
         </button>
@@ -87,7 +87,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
       {hasNext && (
         <button 
           onClick={(e) => { e.stopPropagation(); onNext(); }}
-          className="fixed right-4 top-1/2 -translate-y-1/2 bg-gray-800/50 hover:bg-gray-800 text-white p-3 rounded-full transition-all z-40 hidden md:flex"
+          className="fixed right-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full transition-all z-40 hidden md:flex"
         >
           <ChevronRight size={24} />
         </button>
@@ -128,8 +128,10 @@ export const Lightbox: React.FC<LightboxProps> = ({
           </div>
         )}
 
-        {/* Image Area */}
-        <div className="flex-1 relative bg-black/5 flex items-center justify-center overflow-hidden min-h-[300px] group">
+        {/* Image Area - Standard (Downloads Allowed) */}
+        <div 
+            className="flex-1 relative bg-black/5 flex items-center justify-center overflow-hidden min-h-[300px] group"
+        >
            {photo.type === 'video' ? (
               <video 
                  src={photo.url} 
@@ -182,15 +184,18 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 {photo.likedByMe ? "Te gusta" : "Me gusta"} ({photo.likes})
               </button>
               
-              {/* Download Button */}
-              <button 
-                onClick={() => window.open(photo.url, '_blank')}
-                className="flex items-center justify-center gap-2 px-6 py-2 rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 font-medium transition-colors text-sm"
+              {/* Download Button (Restored) */}
+              <a 
+                href={photo.url}
+                download={photo.title || 'foto'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 px-6 py-2 rounded-md border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 font-medium transition-colors text-sm"
               >
                 <Download size={16} />
                 Descargar
-              </button>
-
+              </a>
+              
               {/* Report Button */}
               <button 
                 onClick={() => setShowReportConfirm(true)}

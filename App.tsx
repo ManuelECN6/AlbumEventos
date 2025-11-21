@@ -39,6 +39,7 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     storageLimit: 100,
     maxPhotosPerPerson: 25,
     maxVideosPerPerson: 5,
+    maxVideoSizeMB: 50,
     clientName: 'Cliente Nuevo',
     downloadPassword: Math.random().toString(36).slice(-6),
     publicToken: '',
@@ -703,7 +704,7 @@ export default function App() {
 
   return (
     <div 
-        className={`min-h-screen pb-8 relative font-sans transition-colors duration-500 ${fontClass}`}
+        className={`min-h-screen pb-8 relative font-sans transition-colors duration-500 ${fontClass} select-none`}
         style={{ backgroundColor: theme.backgroundColor, color: theme.textColor }}
     >
       {/* BOTON DE ADMIN ELIMINADO - Acceso mediante F2, Alt+L o escribiendo 'admin' */}
@@ -743,6 +744,7 @@ export default function App() {
                         objectPosition: `50% ${theme.coverImagePositionY || 50}%`,
                         filter: `blur(${theme.coverBlur || 0}px)` 
                     }}
+                    onContextMenu={(e) => e.preventDefault()}
                  />
             </div>
         )}
@@ -758,7 +760,7 @@ export default function App() {
                 
                 {theme.avatarImage ? (
                     <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-white/20 shadow-sm shrink-0">
-                        <img src={theme.avatarImage} alt="Logo" className="w-full h-full object-cover" />
+                        <img src={theme.avatarImage} alt="Logo" className="w-full h-full object-cover pointer-events-none" />
                     </div>
                 ) : (
                     <div 
@@ -875,10 +877,13 @@ export default function App() {
                     </div>
                     <button onClick={() => handleReport(photo.id)} className="hover:text-red-500 opacity-50 hover:opacity-100" style={{ color: theme.cardTextColor }}><Flag size={18} /></button>
                 </div>
-                <div className="cursor-pointer bg-gray-100 relative aspect-[4/3] overflow-hidden" onClick={() => setSelectedPhotoIndex(index)}>
+                <div 
+                    className="cursor-pointer bg-gray-100 relative aspect-[4/3] overflow-hidden" 
+                    onClick={() => setSelectedPhotoIndex(index)}
+                >
                     {photo.type === 'video' ? (
                         <div className="w-full h-full relative">
-                             <video src={photo.thumbnail} className="w-full h-full object-cover opacity-90" muted />
+                             <video src={photo.thumbnail} className="w-full h-full object-cover opacity-90 pointer-events-none" muted />
                              <div className="absolute inset-0 flex items-center justify-center bg-black/20"><Video size={32} className="text-white" /></div>
                         </div>
                     ) : (

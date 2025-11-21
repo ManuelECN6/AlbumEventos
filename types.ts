@@ -1,5 +1,3 @@
-
-
 export interface Category {
   id: string;
   name: string;
@@ -64,18 +62,17 @@ export interface EventTheme {
 
   // Buttons (Formerly Primary/Secondary)
   primaryColor: string; // Botón Subir
-  primaryTextColor?: string; 
-  secondaryColor: string; // Botón Descargar
-  secondaryTextColor?: string; 
-  
-  // Text Specifics
-  statsTextColor?: string; 
-  headerTitleColor?: string; 
-  headerDateColor?: string; 
-  
-  fontFamily?: 'sans' | 'serif'; 
+  primaryTextColor?: string;
+  secondaryColor?: string;
+  secondaryTextColor?: string;
 
-  // Gallery & Cards Customization
+  // Typography & Colors
+  statsTextColor?: string;
+  headerTitleColor?: string;
+  headerDateColor?: string;
+  fontFamily?: 'sans' | 'serif';
+
+  // Gallery UI
   galleryToolbarBg?: string;
   galleryToolbarText?: string;
   cardBackgroundColor?: string;
@@ -83,24 +80,26 @@ export interface EventTheme {
 }
 
 export interface EventConfig {
-  id: string; // Unique ID for the album
+  id: string;
   title: string;
   subtitle: string;
   date: string;
-  coverImage?: string; // URL for header background image
-  participantsCount: number; // For the stats display
-  participants?: Participant[]; // List of specific participants
-  photos: Photo[]; // PERSISTED PHOTOS for the event
+  coverImage?: string;
+  participantsCount: number;
+  participants: Participant[];
+  photos: Photo[];
   categories: Category[];
   allowUploads: boolean;
   allowedMediaTypes: ('photo' | 'video')[];
-  storageLimit: number; // MB per person
-  maxPhotosPerPerson: number; // Limit of photos per upload session/person
-  maxVideosPerPerson: number; // Limit of videos per upload session/person
-  clientName?: string; // Name of the client assigned to this album
-  downloadPassword?: string; // Password required for downloading the album
-  publicToken?: string; // Unique token for public sharing link
-  theme?: EventTheme; // Custom colors for the album
-  googleDriveUrl?: string; // URL to the Google Drive backup folder
-  isDriveBackupEnabled?: boolean; // Toggle to enable/disable the backup feature
+  storageLimit: number;
+  maxPhotosPerPerson: number;
+  maxVideosPerPerson: number;
+  maxVideoSizeMB?: number;
+  clientName: string;
+  downloadPassword: string;
+  publicToken: string;
+  theme?: EventTheme;
+  googleDriveUrl?: string;
+  isDriveBackupEnabled?: boolean;
+  googleDriveFolderId?: string;
 }
