@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Lightbox } from './components/Lightbox';
 import { UploadModal } from './components/UploadModal';
@@ -57,7 +59,11 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
       coverOverlayColor: '#000000',
       coverOverlayOpacity: 0.4,
       coverBlur: 0,
-      coverImagePositionY: 50
+      coverImagePositionY: 50,
+      galleryToolbarBg: '#ffffff',
+      galleryToolbarText: '#1f2937',
+      cardBackgroundColor: '#ffffff',
+      cardTextColor: '#1f2937'
     },
     googleDriveUrl: '',
     isDriveBackupEnabled: false
@@ -140,13 +146,15 @@ export default function App() {
     events.find(e => e.id === currentEventId) || events[0] || DEFAULT_EVENT_TEMPLATE
   , [events, currentEventId]);
 
-  // --- SYNC PARTICIPANTS FROM PHOTOS (BACKFILL) ---
-  // Este efecto asegura que si hay fotos subidas, el autor aparezca en la lista de participantes
+  // --- SYNC PARTICIPANTS FROM PHOTOS (BACKFILL & DEDUPLICATION) ---
   useEffect(() => {
       if (!activeEvent || !activeEvent.photos) return;
 
       const currentParticipants = activeEvent.participants || [];
-      const participantIds = new Set(currentParticipants.map(p => p.id));
+      // Mapas para búsqueda rápida
+      const existingIds = new Set(currentParticipants.map(p => p.id));
+      const existingNames = new Set(currentParticipants.map(p => p.name.toLowerCase().trim()));
+      
       let hasChanges = false;
       const updatedParticipants = [...currentParticipants];
 
@@ -154,19 +162,34 @@ export default function App() {
       const activePhotos = activeEvent.photos.filter(p => !p.isDeleted);
 
       activePhotos.forEach(photo => {
-          // Identificar usuario por DeviceID o fallback al nombre (para fotos legacy)
-          const userId = photo.deviceId || `legacy-${photo.author.name.replace(/\s+/g, '-').toLowerCase()}`;
+          // 1. Intentar identificar por ID de dispositivo primero
+          const deviceId = photo.deviceId;
+          // 2. Fallback a nombre legacy
+          const legacyId = `legacy-${photo.author.name.replace(/\s+/g, '-').toLowerCase()}`;
           
-          if (!participantIds.has(userId)) {
-              // Verificamos si ya lo añadimos en este ciclo para evitar duplicados
-              if (!updatedParticipants.find(p => p.id === userId)) {
+          // El ID real que usaremos para comprobar existencia técnica
+          const targetId = deviceId || legacyId;
+          const normalizedName = photo.author.name.toLowerCase().trim();
+
+          // Lógica de Deduplicación:
+          // Si el ID ya existe, todo bien.
+          // Si el ID NO existe, pero el NOMBRE ya existe, asumimos que es la misma persona (evitar duplicados visuales)
+          if (!existingIds.has(targetId)) {
+              if (!existingNames.has(normalizedName)) {
+                  // No existe ni el ID ni el Nombre -> Es nuevo
                   updatedParticipants.push({
-                      id: userId,
-                      name: photo.author.name,
+                      id: targetId,
+                      name: photo.author.name, // Nombre original (casing correcto)
                       status: 'confirmed',
                       addedAt: photo.createdAt.split(' ')[0] || new Date().toISOString().split('T')[0]
                   });
+                  existingIds.add(targetId);
+                  existingNames.add(normalizedName);
                   hasChanges = true;
+              } else {
+                  // El nombre YA existe, pero con otro ID.
+                  // Opcional: Podríamos actualizar el ID del participante existente al nuevo deviceId si es más reciente,
+                  // pero por seguridad simplemente no creamos uno nuevo para no ensuciar la lista.
               }
           }
       });
@@ -196,23 +219,12 @@ export default function App() {
 
   // STATS CALCULATIONS
   const uniqueContributors = useMemo(() => {
-      const uniqueUsers = new Set();
-      // Count contributors based on NON-DELETED photos
-      const validPhotos = photos.filter(p => !p.isDeleted);
-      validPhotos.forEach(photo => {
-          // Use deviceId if available, otherwise fallback to author name
-          if (photo.deviceId) {
-              uniqueUsers.add(photo.deviceId);
-          } else {
-              uniqueUsers.add(photo.author.name);
-          }
-      });
-      return uniqueUsers.size;
-  }, [photos]);
+      // Usamos los participantes registrados como fuente de verdad para el contador
+      return activeParticipants.length;
+  }, [activeParticipants]);
 
   const remainingSpotsDisplay = useMemo(() => {
       const totalCapacity = activeEvent.participantsCount || 0;
-      // Usamos la lista filtrada de participantes activos
       const currentRegistered = activeParticipants.length;
       const remaining = Math.max(0, totalCapacity - currentRegistered);
       return `${remaining}/${totalCapacity}`;
@@ -262,31 +274,24 @@ export default function App() {
   };
 
   const handleDeleteEvent = async (id: string) => {
-    // 1. Validación: No borrar el último evento
     if (events.length <= 1) {
       alert("No puedes eliminar el último evento. Debes tener al menos uno.");
       return;
     }
-
-    // 2. Calcular el siguiente evento ANTES de borrar
-    // Esto evita que la UI intente renderizar un evento que no existe
     const remainingEvents = events.filter(e => e.id !== id);
     const nextEventId = remainingEvents.length > 0 ? remainingEvents[0].id : null;
 
-    // 3. Actualización Optimista de la UI
-    setEvents(remainingEvents); // Actualizamos la lista localmente
+    setEvents(remainingEvents); 
     if (currentEventId === id && nextEventId) {
-        setCurrentEventId(nextEventId); // Cambiamos al siguiente evento inmediatamente
+        setCurrentEventId(nextEventId); 
     }
 
-    // 4. Ejecutar borrado en Firebase
     try {
         setIsProcessing(true);
         await deleteEventFromFirebase(id);
     } catch (error) {
         console.error("Error eliminando evento:", error);
         alert("Hubo un error al eliminar el evento de la base de datos.");
-        // Opcional: Recargar la página si falla para restaurar estado
         window.location.reload();
     } finally {
         setIsProcessing(false);
@@ -296,20 +301,16 @@ export default function App() {
   // SUBIDA DE FOTOS (CONECTADA A FIREBASE STORAGE)
   const handlePhotoUpload = async (files: File[], authorName: string) => {
     const newPhotos: Photo[] = [];
-    
-    // Usar el color primario del tema o uno por defecto
     const authorColor = activeEvent.theme?.primaryColor || '#a87b51';
 
-    // Procesar archivos uno por uno (para mantener orden y simplicidad)
     for (const file of files) {
         try {
-            // Subir a Firebase Storage y obtener URL y metadatos
             const photoObject = await processAndUploadPhoto(
                 file, 
                 activeEvent.id, 
                 authorName, 
                 authorColor,
-                deviceId // Pasar el ID del dispositivo
+                deviceId 
             );
             newPhotos.push(photoObject);
         } catch (error) {
@@ -318,40 +319,39 @@ export default function App() {
     }
 
     if (newPhotos.length > 0) {
-        // --- NUEVA LÓGICA: ACTUALIZAR LISTA DE PARTICIPANTES AL SUBIR ---
         let currentParticipants = [...(activeEvent.participants || [])];
-        const userId = deviceId || `legacy-${authorName.replace(/\s+/g, '-').toLowerCase()}`;
-
-        // Verificar si este dispositivo ya está registrado como participante
-        const participantIndex = currentParticipants.findIndex(p => p.id === userId);
-
-        if (participantIndex === -1) {
-            // Si no existe, lo creamos
+        // Usamos el ID del dispositivo actual para la lógica de subida
+        const userId = deviceId; 
+        
+        // Check if participant already exists by ID OR by Name to prevent duplicates
+        const participantIndexById = currentParticipants.findIndex(p => p.id === userId);
+        const participantIndexByName = currentParticipants.findIndex(p => p.name.toLowerCase() === authorName.toLowerCase());
+        
+        if (participantIndexById === -1 && participantIndexByName === -1) {
+            // Si no existe ni por ID ni por nombre, lo creamos
             const newParticipant: Participant = {
                 id: userId, 
                 name: authorName,
-                status: 'confirmed', // Confirmado porque ya subió fotos
+                status: 'confirmed', 
                 addedAt: new Date().toISOString().split('T')[0]
             };
             currentParticipants.push(newParticipant);
         } else {
-             // Opcional: Actualizar nombre si cambió
-             // Si estaba "declined" (eliminado), lo reactivamos al subir nuevas fotos
-             if(currentParticipants[participantIndex].status === 'declined') {
-                 currentParticipants[participantIndex] = {
-                     ...currentParticipants[participantIndex],
-                     status: 'confirmed',
-                     name: authorName
-                 };
-             } else {
-                 currentParticipants[participantIndex] = {
-                     ...currentParticipants[participantIndex],
-                     name: authorName
-                 };
+             // Si existe, actualizamos el nombre si es necesario (y no es legacy)
+             const indexToUpdate = participantIndexById !== -1 ? participantIndexById : participantIndexByName;
+             
+             if (indexToUpdate !== -1) {
+                 // Reactivar si estaba eliminado
+                 if (currentParticipants[indexToUpdate].status === 'declined') {
+                     currentParticipants[indexToUpdate] = {
+                         ...currentParticipants[indexToUpdate],
+                         status: 'confirmed',
+                         name: authorName // Actualizar nombre al más reciente
+                     };
+                 }
              }
         }
 
-        // Actualizar el evento en Firebase con las nuevas fotos Y la nueva lista de participantes
         const updatedEvent = {
             ...activeEvent,
             photos: [...newPhotos, ...activeEvent.photos],
@@ -368,10 +368,8 @@ export default function App() {
         const authorColor = activeEvent.theme?.secondaryColor || '#4f46e5';
         const newPhotos: Photo[] = [];
 
-        // 1. Process and upload all files to Firebase Storage
         for (const file of files) {
             try {
-                // Use a stable device ID for the admin importer to group all imports
                 const importerDeviceId = `drive-importer-${activeEvent.id}`;
                 const photoObject = await processAndUploadPhoto(file, activeEvent.id, authorName, authorColor, importerDeviceId);
                 newPhotos.push(photoObject);
@@ -381,26 +379,24 @@ export default function App() {
         }
 
         if (newPhotos.length > 0) {
-            // 2. Get the latest event state to avoid overwriting data
             const latestEvent = await getEvent(activeEvent.id);
             if (!latestEvent) throw new Error("Event not found for Drive import.");
 
             let updatedParticipants = [...(latestEvent.participants || [])];
             const importerDeviceId = `drive-importer-${latestEvent.id}`;
 
-            // 3. Find or create a participant entry for the importer
-            let importerParticipant = updatedParticipants.find(p => p.id === importerDeviceId);
-            if (!importerParticipant) {
-                importerParticipant = {
+            // Check duplication
+            const existingIndex = updatedParticipants.findIndex(p => p.id === importerDeviceId || p.name === authorName);
+            
+            if (existingIndex === -1) {
+                updatedParticipants.push({
                     id: importerDeviceId,
                     name: authorName,
                     status: 'confirmed',
                     addedAt: new Date().toISOString().split('T')[0],
-                };
-                updatedParticipants.push(importerParticipant);
+                });
             }
 
-            // 4. Combine new photos with existing ones and save
             const updatedEvent = {
                 ...latestEvent,
                 photos: [...newPhotos, ...latestEvent.photos],
@@ -422,7 +418,6 @@ export default function App() {
       const isLiked = likedPhotoIds.has(photoId);
       const newLikedIds = new Set(likedPhotoIds);
       
-      // 1. Actualizar estado local (Toggle)
       if (isLiked) {
           newLikedIds.delete(photoId);
       } else {
@@ -430,15 +425,11 @@ export default function App() {
       }
       setLikedPhotoIds(newLikedIds);
       
-      // 2. Guardar persistencia local
       localStorage.setItem(`album_likes_${activeEvent.id}`, JSON.stringify(Array.from(newLikedIds)));
 
-      // 3. Actualizar Firebase (Solo contador)
       const updatedPhotos = activeEvent.photos.map(p => {
           if (p.id === photoId) {
-              // Calcular nuevo contador
               const newCount = Math.max(0, p.likes + (isLiked ? -1 : 1));
-              // IMPORTANTE: No guardamos 'likedByMe' en la base de datos compartida para no afectar a otros usuarios
               return { ...p, likes: newCount, likedByMe: false }; 
           }
           return p;
@@ -448,15 +439,11 @@ export default function App() {
   };
 
   const handleReport = (photoId: string) => {
-     // En una app real, esto enviaría una alerta a una colección 'reports'
      alert("Foto reportada. El administrador la revisará.");
   };
 
-  // Soft Delete (Move to Recycle Bin) - WITH OPTIMISTIC UPDATE
   const handleDeletePhoto = async (photoId: string) => {
     if (!currentEventId) return;
-
-    // Optimistic UI Update
     const eventBeforeUpdate = events.find(e => e.id === currentEventId);
     if (!eventBeforeUpdate) return;
     
@@ -466,10 +453,7 @@ export default function App() {
     const optimisticEvent = { ...eventBeforeUpdate, photos: optimisticallyUpdatedPhotos };
     setEvents(events.map(e => e.id === currentEventId ? optimisticEvent : e));
     
-    // Perform actual DB operation directly
     try {
-      // NO fetch getEvent again to avoid race condition on quick toggles
-      // Just trust the current state for the update, or use arrayUpdate in future
       const latestEvent = await getEvent(currentEventId); 
       if (latestEvent) {
            const updatedPhotos = latestEvent.photos.map(p => 
@@ -480,24 +464,20 @@ export default function App() {
     } catch (error: any) {
       console.error("Error during soft delete:", error);
       alert(`Hubo un error al mover la foto a la papelera: ${error.message}`);
-      // Revert on failure
       setEvents(events.map(e => e.id === currentEventId ? eventBeforeUpdate : e));
     }
   };
 
-  // Bulk Restore Photos (And Participants)
   const handleBulkRestore = (photoIds: string[]) => {
       let updatedParticipants = [...(activeEvent.participants || [])];
       
-      // Find photos to be restored
       const photosToRestore = activeEvent.photos.filter(p => photoIds.includes(p.id));
       
-      // Check associated participants and restore them if they are deleted
       photosToRestore.forEach(photo => {
           const participantId = photo.deviceId || `legacy-${photo.author.name.replace(/\s+/g, '-').toLowerCase()}`;
-          const pIndex = updatedParticipants.findIndex(p => p.id === participantId);
+          // Try find by ID, if not, by Name
+          const pIndex = updatedParticipants.findIndex(p => p.id === participantId || p.name === photo.author.name);
           
-          // If the participant is in the trash (declined), bring them back to active (confirmed)
           if (pIndex !== -1 && updatedParticipants[pIndex].status === 'declined') {
               updatedParticipants[pIndex] = { 
                   ...updatedParticipants[pIndex], 
@@ -506,7 +486,6 @@ export default function App() {
           }
       });
 
-      // Restore photos
       const updatedPhotos = activeEvent.photos.map(p => 
           photoIds.includes(p.id) 
             ? { ...p, isDeleted: false, isArchived: false } 
@@ -520,12 +499,9 @@ export default function App() {
       });
   };
 
-  // Restore from Recycle Bin (Single Wrapper)
   const handleRestorePhoto = (photoId: string) => {
       handleBulkRestore([photoId]);
   };
-
-  // --- LÓGICA DE ELIMINACIÓN RE-ARQUITECTADA ---
 
   const handlePermanentPhotoRemoval = async (photoIdsToRemove: string[]) => {
     if (!currentEventId || photoIdsToRemove.length === 0) {
@@ -568,7 +544,6 @@ export default function App() {
       } else {
           alert(`Hubo un error al eliminar los archivos: ${error.message}`);
       }
-      // PROPAGATE THE ERROR TO THE CALLING COMPONENT
       throw error;
     } finally {
       setIsProcessing(false);
@@ -580,7 +555,7 @@ export default function App() {
   };
 
   const handlePermanentDelete = (photoId: string) => {
-    handlePermanentPhotoRemoval([photoId]);
+    return handlePermanentPhotoRemoval([photoId]);
   };
   
   const handleArchivePhoto = (photoId: string) => {
@@ -594,7 +569,6 @@ export default function App() {
     if (!currentEventId) return;
     const idsSet = new Set(photoIds);
 
-    // Optimistic UI Update (State)
     const eventBeforeUpdate = events.find(e => e.id === currentEventId);
     if (!eventBeforeUpdate) return;
 
@@ -604,9 +578,7 @@ export default function App() {
     const optimisticEvent = { ...eventBeforeUpdate, photos: optimisticallyUpdatedPhotos };
     setEvents(events.map(e => e.id === currentEventId ? optimisticEvent : e));
 
-    // Perform DB Update (Directly, no stale read)
     try {
-      // We update based on current DB state but using our ID list
       const latestEvent = await getEvent(currentEventId);
       if (latestEvent) {
           const updatedPhotos = latestEvent.photos.map(p =>
@@ -617,7 +589,6 @@ export default function App() {
     } catch (error) {
       console.error("Error during bulk soft delete:", error);
       alert("Hubo un error al mover las fotos a la papelera.");
-      // Revert state on error
       setEvents(events.map(e => e.id === currentEventId ? eventBeforeUpdate : e));
     }
   };
@@ -807,12 +778,18 @@ export default function App() {
 
       {guestPhotos.length > 0 && (
         <div className="max-w-6xl mx-auto mb-6 px-4 md:px-8">
-            <div className="bg-white rounded-xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 border border-gray-100">
+            <div 
+                className="rounded-xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 border border-gray-100"
+                style={{ 
+                    backgroundColor: theme.galleryToolbarBg || '#ffffff',
+                    color: theme.galleryToolbarText || '#374151'
+                }}
+            >
             <div className="flex items-center gap-4 w-full sm:w-auto">
-                <span className="font-bold text-gray-700 flex items-center gap-2"><LayoutGrid size={20} /> Vista de Galería</span>
+                <span className="font-bold flex items-center gap-2"><LayoutGrid size={20} /> Vista de Galería</span>
                 <div className="flex gap-2 ml-auto sm:ml-4">
-                <button onClick={() => setColumns(1)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 1 ? 'shadow-sm' : 'bg-white border-gray-300'}`} style={columns === 1 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor } : {}}><LayoutList size={16} /></button>
-                <button onClick={() => setColumns(2)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 2 ? 'shadow-sm' : 'bg-white border-gray-300'}`} style={columns === 2 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor } : {}}><LayoutGrid size={16} /></button>
+                <button onClick={() => setColumns(1)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 1 ? 'shadow-sm' : 'bg-transparent border-current opacity-70'}`} style={columns === 1 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor, borderColor: theme.secondaryColor } : {}}><LayoutList size={16} /></button>
+                <button onClick={() => setColumns(2)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 2 ? 'shadow-sm' : 'bg-transparent border-current opacity-70'}`} style={columns === 2 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor, borderColor: theme.secondaryColor } : {}}><LayoutGrid size={16} /></button>
                 </div>
             </div>
             </div>
@@ -836,13 +813,22 @@ export default function App() {
         ) : (
             <div className={`grid gap-6 ${columns === 1 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
             {guestPhotos.map((photo, index) => (
-                <div key={photo.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden border border-gray-100">
+                <div 
+                    key={photo.id} 
+                    className="rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden border border-gray-100"
+                    style={{ 
+                        backgroundColor: theme.cardBackgroundColor || '#ffffff' 
+                    }}
+                >
                 <div className="p-4 flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-gray-700" style={{ backgroundColor: photo.author.avatarColor }}>{photo.author.initials}</div>
-                    <div><h3 className="font-bold text-gray-800 text-sm">{photo.author.name}</h3><p className="text-gray-400 text-xs">{new Date(photo.createdAt).toLocaleString()}</p></div>
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: photo.author.avatarColor, color: '#fff' }}>{photo.author.initials}</div>
+                    <div>
+                        <h3 className="font-bold text-sm" style={{ color: theme.cardTextColor || '#1f2937' }}>{photo.author.name}</h3>
+                        <p className="text-xs opacity-70" style={{ color: theme.cardTextColor || '#6b7280' }}>{new Date(photo.createdAt).toLocaleString()}</p>
                     </div>
-                    <button onClick={() => handleReport(photo.id)} className="text-gray-300 hover:text-red-500"><Flag size={18} /></button>
+                    </div>
+                    <button onClick={() => handleReport(photo.id)} className="hover:text-red-500 opacity-50 hover:opacity-100" style={{ color: theme.cardTextColor }}><Flag size={18} /></button>
                 </div>
                 <div className="cursor-pointer bg-gray-100 relative aspect-[4/3] overflow-hidden" onClick={() => setSelectedPhotoIndex(index)}>
                     {photo.type === 'video' ? (
@@ -855,8 +841,15 @@ export default function App() {
                     )}
                     <div className="absolute top-3 right-3 bg-black/50 backdrop-blur-sm text-white text-[10px] px-2 py-1 rounded uppercase font-bold">{photo.category}</div>
                 </div>
-                <div className="p-4 border-t border-gray-50 flex items-center justify-between">
-                    <button onClick={() => handleLike(photo.id)} className={`flex items-center gap-2 text-sm font-medium ${photo.likedByMe ? '' : 'text-gray-500'}`} style={photo.likedByMe ? { color: theme.secondaryColor } : {}}><Heart size={20} className={photo.likedByMe ? "fill-current" : ""} /><span>{photo.likes}</span></button>
+                <div className="p-4 border-t flex items-center justify-between" style={{ borderColor: hexToRgba(theme.cardTextColor || '#000000', 0.1) }}>
+                    <button 
+                        onClick={() => handleLike(photo.id)} 
+                        className={`flex items-center gap-2 text-sm font-medium`} 
+                        style={{ color: photo.likedByMe ? theme.secondaryColor : (theme.cardTextColor || '#6b7280') }}
+                    >
+                        <Heart size={20} className={photo.likedByMe ? "fill-current" : ""} />
+                        <span>{photo.likes}</span>
+                    </button>
                 </div>
                 </div>
             ))}

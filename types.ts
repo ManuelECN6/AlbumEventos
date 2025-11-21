@@ -74,6 +74,12 @@ export interface EventTheme {
   headerDateColor?: string; 
   
   fontFamily?: 'sans' | 'serif'; 
+
+  // Gallery & Cards Customization
+  galleryToolbarBg?: string;
+  galleryToolbarText?: string;
+  cardBackgroundColor?: string;
+  cardTextColor?: string;
 }
 
 export interface EventConfig {
