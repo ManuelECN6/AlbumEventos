@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
 import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Pencil, Check, X as XIcon, LogOut, FolderPlus, Folder, Users, Search, Video, Grid, Eye, EyeOff, Lock, Link as LinkIcon, Copy, RefreshCw, UserCheck, ExternalLink, Menu, Maximize2, Calendar, Clock, CheckSquare, Square, UserPlus, Mail, BadgeCheck, AlertCircle, Palette, Upload, Type, Cloud, FileText, QrCode, Download, Loader2, HelpCircle, PieChart, Camera, PlayCircle, RotateCcw, Trash2, Filter, AlertTriangle, UserX, Heart, ImageIcon, Sliders, Droplet, Zap, User, CheckCircle, Info } from 'lucide-react';
@@ -472,7 +473,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <ul className="space-y-1">
                         {[
                             { id: 'general', icon: Layout, label: 'General' },
-                            { id: 'appearance', icon: Palette, label: 'Personalización del Evento' },
+                            { id: 'appearance', icon: Palette, label: 'Personalización' },
                             { id: 'categories', icon: Grid, label: 'Categorías' },
                             { id: 'participants', icon: Users, label: 'Participantes' },
                             { id: 'clients', icon: UserCheck, label: 'Clientes' },
@@ -507,7 +508,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div>
                 <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
                     {activeTab === 'general' && 'Vista Previa & Gestión'}
-                    {activeTab === 'appearance' && 'Personalización del Evento'}
+                    {activeTab === 'appearance' && 'Personalización'}
                     {activeTab === 'categories' && 'Gestión de Categorías'}
                     {activeTab === 'gallery' && 'Gestión de Imágenes'}
                     {activeTab === 'clients' && 'Gestión de Cliente'}
