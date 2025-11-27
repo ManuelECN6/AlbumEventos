@@ -858,7 +858,7 @@ export default function App() {
                 )}
             </div>
         ) : (
-            <div className={`grid gap-6 ${columns === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            <div className={`grid gap-6 ${columns === 1 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
             {guestPhotos.map((photo, index) => (
                 <div 
                     key={photo.id} 
