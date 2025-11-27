@@ -858,7 +858,7 @@ export default function App() {
                 )}
             </div>
         ) : (
-            <div className={`grid gap-6 ${columns === 1 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
+            <div className={`grid gap-6 ${columns === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
             {guestPhotos.map((photo, index) => (
                 <div 
                     key={photo.id} 
@@ -873,7 +873,7 @@ export default function App() {
                     <div>
                         <h3 className="font-bold text-base" style={{ color: theme.cardTextColor || '#1f2937' }}>{photo.author.name}</h3>
                         {/* VALIDACIÓN DE FECHA PARA PREVENIR INVALID DATE */}
-                        <p className="text-xs sm:text-sm font-medium opacity-90" style={{ color: theme.cardTextColor || '#6b7280' }}>
+                        <p className="text-xs font-medium opacity-90" style={{ color: theme.cardTextColor || '#6b7280' }}>
                            {!isNaN(new Date(photo.createdAt).getTime()) 
                                 ? new Date(photo.createdAt).toLocaleString() 
                                 : photo.createdAt}
