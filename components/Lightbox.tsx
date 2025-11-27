@@ -63,6 +63,12 @@ export const Lightbox: React.FC<LightboxProps> = ({
     .filter(p => p.author.name === photo.author.name && p.id !== photo.id)
     .slice(0, 3);
 
+  // Helper para validar fechas y evitar "Invalid Date"
+  const getFormattedDate = (dateString: string) => {
+      const date = new Date(dateString);
+      return !isNaN(date.getTime()) ? date.toLocaleString() : dateString;
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-fade-in overflow-y-auto select-none">
       
@@ -164,7 +170,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                     <p className="font-bold text-gray-800 text-lg leading-tight">{photo.author.name}</p>
                     <div className="flex items-center justify-center gap-2 text-xs text-gray-400 mt-1">
                         <Clock size={12} />
-                        <span>{photo.createdAt}</span>
+                        <span>{getFormattedDate(photo.createdAt)}</span>
                     </div>
                 </div>
             </div>

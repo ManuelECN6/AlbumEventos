@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { X, Upload, User, Image as ImageIcon, Info, AlertCircle, Trash2, CheckCircle, Video, Loader2 } from 'lucide-react';
 import { EventConfig } from '../types';
 
@@ -88,14 +88,21 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Calculate previously uploaded items by this device
-  // This ensures strict limits even if page is refreshed
-  const previousUserPhotos = deviceId 
-      ? event.photos.filter(p => p.deviceId === deviceId && p.type !== 'video').length 
-      : 0;
-  const previousUserVideos = deviceId
-      ? event.photos.filter(p => p.deviceId === deviceId && p.type === 'video').length
-      : 0;
+  // --- LÓGICA DE IDENTIDAD ROBUSTA ---
+  // 1. Determinar el ID efectivo: Si deviceId prop falla, buscamos en localStorage.
+  const effectiveDeviceId = useMemo(() => {
+      return deviceId || localStorage.getItem('album_device_id') || 'unknown-device';
+  }, [deviceId]);
+
+  // 2. Calcular límites basados en el ID del dispositivo, NO en el nombre.
+  // Esto previene que cambiar el nombre reinicie el contador.
+  const previousUserPhotos = useMemo(() => 
+      event.photos.filter(p => p.deviceId === effectiveDeviceId && p.type !== 'video').length
+  , [event.photos, effectiveDeviceId]);
+
+  const previousUserVideos = useMemo(() =>
+      event.photos.filter(p => p.deviceId === effectiveDeviceId && (p.type === 'video' || p.type === 'video/quicktime')).length
+  , [event.photos, effectiveDeviceId]);
 
   // Theme defaults
   const theme = event.theme || {
@@ -133,6 +140,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
       'video/3gpp'
   ];
   
+  // Nuevo: límite individual de video
+  const MAX_VIDEO_MB = event.maxVideoSizeMB || 50; 
+  const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024;
+  
   const getAcceptString = () => {
       let types: string[] = [];
       if (event.allowedMediaTypes.includes('photo')) types = [...types, ...ALLOWED_IMAGE_TYPES];
@@ -147,6 +158,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
     const newFiles: File[] = [];
     let invalidTypeCount = 0;
     let oversizedCount = 0;
+    let videoOversizedCount = 0;
     let duplicateCount = 0;
     let photoLimitReached = false;
     let videoLimitReached = false;
@@ -171,6 +183,13 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
         return;
       }
 
+      // Check Video Specific Limit first
+      if (isVideo && file.size > MAX_VIDEO_BYTES) {
+          videoOversizedCount++;
+          return;
+      }
+
+      // Check General Storage Limit per file (fallback)
       if (file.size > MAX_SIZE_BYTES) {
         oversizedCount++;
         return;
@@ -202,7 +221,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
       }
     });
 
-    if (oversizedCount > 0) {
+    if (videoOversizedCount > 0) {
+        setError(`Se ignoraron ${videoOversizedCount} video(s) porque exceden el límite de ${MAX_VIDEO_MB}MB.`);
+    } else if (oversizedCount > 0) {
       setError(`Se ignoraron ${oversizedCount} archivo(s) porque exceden el límite de ${MAX_SIZE_MB}MB.`);
     } else if (invalidTypeCount > 0) {
       setError(`Se ignoraron ${invalidTypeCount} archivo(s). Asegúrate de subir formatos válidos.`);
@@ -493,25 +514,32 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
                 </div>
 
                 {/* Footer */}
-                <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3 shrink-0">
-                <button 
-                    onClick={handleClose}
-                    className="px-6 py-2.5 rounded-md bg-gray-500 text-white font-medium hover:bg-gray-600 transition-colors shadow-sm text-sm"
-                >
-                    Cancelar
-                </button>
-                <button 
-                    onClick={handleSubmit}
-                    disabled={selectedFiles.length === 0}
-                    className="px-6 py-2.5 rounded-md font-medium transition-colors shadow-sm flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{
-                        backgroundColor: theme.primaryColor,
-                        color: theme.primaryTextColor
-                    }}
-                >
-                    <Upload size={16} />
-                    Subir
-                </button>
+                <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between shrink-0">
+                {/* Visual ID for Troubleshooting */}
+                <span className="text-[10px] text-gray-400 mr-auto">
+                    ID Disp: {effectiveDeviceId.slice(-6)}
+                </span>
+                
+                <div className="flex gap-3">
+                    <button 
+                        onClick={handleClose}
+                        className="px-6 py-2.5 rounded-md bg-gray-500 text-white font-medium hover:bg-gray-600 transition-colors shadow-sm text-sm"
+                    >
+                        Cancelar
+                    </button>
+                    <button 
+                        onClick={handleSubmit}
+                        disabled={selectedFiles.length === 0}
+                        className="px-6 py-2.5 rounded-md font-medium transition-colors shadow-sm flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{
+                            backgroundColor: theme.primaryColor,
+                            color: theme.primaryTextColor
+                        }}
+                    >
+                        <Upload size={16} />
+                        Subir
+                    </button>
+                </div>
                 </div>
             </>
         )}

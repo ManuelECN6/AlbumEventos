@@ -183,7 +183,8 @@ export const processAndUploadPhoto = async (
     likes: 0,
     likedByMe: false,
     isArchived: false,
-    createdAt: new Date().toLocaleString(),
+    // CAMBIO CRITICO: Usar ISOString para evitar "Invalid Date" en distintos navegadores
+    createdAt: new Date().toISOString(),
     author: {
       name: authorName,
       initials: authorName.substring(0, 2).toUpperCase(),

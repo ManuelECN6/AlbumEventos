@@ -872,7 +872,12 @@ export default function App() {
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: photo.author.avatarColor, color: '#fff' }}>{photo.author.initials}</div>
                     <div>
                         <h3 className="font-bold text-sm" style={{ color: theme.cardTextColor || '#1f2937' }}>{photo.author.name}</h3>
-                        <p className="text-xs opacity-70" style={{ color: theme.cardTextColor || '#6b7280' }}>{new Date(photo.createdAt).toLocaleString()}</p>
+                        {/* VALIDACIÓN DE FECHA PARA PREVENIR INVALID DATE */}
+                        <p className="text-xs opacity-70" style={{ color: theme.cardTextColor || '#6b7280' }}>
+                           {!isNaN(new Date(photo.createdAt).getTime()) 
+                                ? new Date(photo.createdAt).toLocaleString() 
+                                : photo.createdAt}
+                        </p>
                     </div>
                     </div>
                     <button onClick={() => handleReport(photo.id)} className="hover:text-red-500 opacity-50 hover:opacity-100" style={{ color: theme.cardTextColor }}><Flag size={18} /></button>
