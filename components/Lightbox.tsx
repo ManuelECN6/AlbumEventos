@@ -167,9 +167,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 
                 {/* Name and Date */}
                 <div className="text-center">
-                    <p className="font-bold text-gray-800 text-lg leading-tight">{photo.author.name}</p>
-                    <div className="flex items-center justify-center gap-2 text-xs text-gray-400 mt-1">
-                        <Clock size={12} />
+                    <p className="font-bold text-gray-800 text-2xl leading-tight">{photo.author.name}</p>
+                    <div className="flex items-center justify-center gap-2 text-sm font-medium text-gray-500 mt-2">
+                        <Clock size={14} />
                         <span>{getFormattedDate(photo.createdAt)}</span>
                     </div>
                 </div>

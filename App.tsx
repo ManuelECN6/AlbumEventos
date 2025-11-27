@@ -871,9 +871,9 @@ export default function App() {
                     <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: photo.author.avatarColor, color: '#fff' }}>{photo.author.initials}</div>
                     <div>
-                        <h3 className="font-bold text-sm" style={{ color: theme.cardTextColor || '#1f2937' }}>{photo.author.name}</h3>
+                        <h3 className="font-bold text-base" style={{ color: theme.cardTextColor || '#1f2937' }}>{photo.author.name}</h3>
                         {/* VALIDACIÓN DE FECHA PARA PREVENIR INVALID DATE */}
-                        <p className="text-xs opacity-70" style={{ color: theme.cardTextColor || '#6b7280' }}>
+                        <p className="text-xs sm:text-sm font-medium opacity-90" style={{ color: theme.cardTextColor || '#6b7280' }}>
                            {!isNaN(new Date(photo.createdAt).getTime()) 
                                 ? new Date(photo.createdAt).toLocaleString() 
                                 : photo.createdAt}
