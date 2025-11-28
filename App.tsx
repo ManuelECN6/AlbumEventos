@@ -60,6 +60,7 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
       coverOverlayOpacity: 0.4,
       coverBlur: 0,
       coverImagePositionY: 50,
+      coverImagePositionDesktopY: 50,
       galleryToolbarBg: '#ffffff',
       galleryToolbarText: '#1f2937',
       cardBackgroundColor: '#ffffff',
@@ -721,12 +722,27 @@ export default function App() {
       />
     );
   }
+  
+  // Calculate dynamic position
+  const mobilePos = theme.coverImagePositionY || 50;
+  const desktopPos = theme.coverImagePositionDesktopY ?? mobilePos;
 
   return (
     <div 
         className={`min-h-screen pb-8 relative font-sans transition-colors duration-500 ${fontClass} select-none`}
         style={{ backgroundColor: theme.backgroundColor, color: theme.textColor }}
     >
+      <style>{`
+          .custom-cover-position {
+              object-position: 50% ${mobilePos}%;
+          }
+          @media (min-width: 768px) {
+              .custom-cover-position {
+                  object-position: 50% ${desktopPos}%;
+              }
+          }
+      `}</style>
+      
       {/* BOTON DE ADMIN ELIMINADO - Acceso mediante 5 Clics en Título, F2, Alt+L o escribiendo 'admin' */}
 
       {showLoginModal && (
@@ -758,10 +774,9 @@ export default function App() {
             <div className="absolute inset-0 z-0 overflow-hidden h-full w-full">
                  <img 
                     src={activeEvent.coverImage} 
-                    className="w-full h-full object-cover transition-all duration-500" 
+                    className="w-full h-full object-cover transition-all duration-500 custom-cover-position" 
                     alt="Cover" 
                     style={{ 
-                        objectPosition: `50% ${theme.coverImagePositionY || 50}%`,
                         filter: `blur(${theme.coverBlur || 0}px)` 
                     }}
                     onContextMenu={(e) => e.preventDefault()}

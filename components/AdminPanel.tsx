@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
-import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Pencil, Check, X as XIcon, LogOut, FolderPlus, Folder, Users, Search, Video, Grid, Eye, EyeOff, Lock, Link as LinkIcon, Copy, RefreshCw, UserCheck, ExternalLink, Menu, Maximize2, Calendar, Clock, CheckSquare, Square, UserPlus, Mail, BadgeCheck, AlertCircle, Palette, Upload, Type, Cloud, FileText, QrCode, Download, Loader2, HelpCircle, PieChart, Camera, PlayCircle, RotateCcw, Trash2, Filter, AlertTriangle, UserX, Heart, ImageIcon, Sliders, Droplet, Zap, User, CheckCircle, Info } from 'lucide-react';
+import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Pencil, Check, X as XIcon, LogOut, FolderPlus, Folder, Users, Search, Video, Grid, Eye, EyeOff, Lock, Link as LinkIcon, Copy, RefreshCw, UserCheck, ExternalLink, Menu, Maximize2, Calendar, Clock, CheckSquare, Square, UserPlus, Mail, BadgeCheck, AlertCircle, Palette, Upload, Type, Cloud, FileText, QrCode, Download, Loader2, HelpCircle, PieChart, Camera, PlayCircle, RotateCcw, Trash2, Filter, AlertTriangle, UserX, Heart, ImageIcon, Sliders, Droplet, Zap, User, CheckCircle, Info, Smartphone, Monitor } from 'lucide-react';
 import { uploadFileToFirebase } from '../services/firebaseService';
 import { GoogleDriveImporter } from './GoogleDriveImporter';
 import QRCode from "react-qr-code";
@@ -62,6 +62,7 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
       coverOverlayOpacity: 0.4,
       coverBlur: 0,
       coverImagePositionY: 50,
+      coverImagePositionDesktopY: 50,
       galleryToolbarBg: '#ffffff',
       galleryToolbarText: '#1f2937',
       cardBackgroundColor: '#ffffff',
@@ -639,6 +640,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                         />
                                     </div>
                                 </div>
+
+                                {/* Vertical Position Controls (Mobile & Desktop) */}
+                                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                     {/* Mobile Alignment */}
+                                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                                        <div className="flex justify-between items-center mb-3">
+                                            <label className="block text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
+                                                <Smartphone size={14} /> Alineación (Móvil)
+                                            </label>
+                                            <span className="text-xs font-mono text-gray-600 bg-white border border-gray-200 px-2 py-0.5 rounded">{localConfig.theme?.coverImagePositionY || 50}%</span>
+                                        </div>
+                                        <input 
+                                            type="range" 
+                                            min="0" max="100" 
+                                            value={localConfig.theme?.coverImagePositionY || 50}
+                                            onChange={(e) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, coverImagePositionY: parseInt(e.target.value) } }))}
+                                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#4f46e5]"
+                                        />
+                                        <p className="text-[10px] text-gray-400 mt-2">Ajuste vertical para pantallas pequeñas.</p>
+                                     </div>
+
+                                     {/* Desktop Alignment */}
+                                     <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                                        <div className="flex justify-between items-center mb-3">
+                                            <label className="block text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
+                                                <Monitor size={14} /> Alineación (Escritorio)
+                                            </label>
+                                            <span className="text-xs font-mono text-gray-600 bg-white border border-gray-200 px-2 py-0.5 rounded">{localConfig.theme?.coverImagePositionDesktopY ?? (localConfig.theme?.coverImagePositionY || 50)}%</span>
+                                        </div>
+                                        <input 
+                                            type="range" 
+                                            min="0" max="100" 
+                                            value={localConfig.theme?.coverImagePositionDesktopY ?? (localConfig.theme?.coverImagePositionY || 50)}
+                                            onChange={(e) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, coverImagePositionDesktopY: parseInt(e.target.value) } }))}
+                                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#4f46e5]"
+                                        />
+                                        <p className="text-[10px] text-gray-400 mt-2">Ajuste vertical para pantallas grandes.</p>
+                                     </div>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-6">
@@ -1013,6 +1053,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           )}
           
+          {/* ... (rest of the tabs kept exactly as they were in previous restoration) ... */}
           {activeTab === 'categories' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 {/* Sidebar: Add New */}

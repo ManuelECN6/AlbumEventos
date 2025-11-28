@@ -58,7 +58,8 @@ export interface EventTheme {
   coverOverlayColor?: string; // Color of the overlay layer
   coverOverlayOpacity?: number; // 0.0 to 1.0
   coverBlur?: number; // px value for blur effect
-  coverImagePositionY?: number; // Percentage for object-position
+  coverImagePositionY?: number; // Percentage for object-position (Mobile/Default)
+  coverImagePositionDesktopY?: number; // Percentage for object-position (Desktop specific)
 
   // Buttons (Formerly Primary/Secondary)
   primaryColor: string; // Botón Subir
