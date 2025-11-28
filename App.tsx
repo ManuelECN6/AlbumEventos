@@ -21,7 +21,8 @@ import {
   Plus,
   Video,
   Loader2,
-  Lock
+  Lock,
+  ChevronDown
 } from 'lucide-react';
 
 // --- PLANTILLA POR DEFECTO ---
@@ -81,6 +82,10 @@ export default function App() {
 
   // Estado local para los Likes (Persistencia por dispositivo)
   const [likedPhotoIds, setLikedPhotoIds] = useState<Set<string>>(new Set());
+  
+  // PAGINACIÓN
+  const PHOTOS_PER_PAGE = 12;
+  const [visiblePhotosCount, setVisiblePhotosCount] = useState(PHOTOS_PER_PAGE);
 
   // --- IDENTIFICACIÓN DE DISPOSITIVO ---
   useEffect(() => {
@@ -141,6 +146,8 @@ export default function App() {
       } catch (e) {
           console.error("Error cargando likes locales", e);
       }
+      // Reset pagination on event change
+      setVisiblePhotosCount(PHOTOS_PER_PAGE);
   }, [currentEventId]);
 
   const activeEvent = useMemo(() => 
@@ -173,24 +180,18 @@ export default function App() {
           const normalizedName = photo.author.name.toLowerCase().trim();
 
           // Lógica de Deduplicación:
-          // Si el ID ya existe, todo bien.
-          // Si el ID NO existe, pero el NOMBRE ya existe, asumimos que es la misma persona (evitar duplicados visuales)
           if (!existingIds.has(targetId)) {
               if (!existingNames.has(normalizedName)) {
                   // No existe ni el ID ni el Nombre -> Es nuevo
                   updatedParticipants.push({
                       id: targetId,
-                      name: photo.author.name, // Nombre original (casing correcto)
+                      name: photo.author.name, 
                       status: 'confirmed',
                       addedAt: photo.createdAt.split(' ')[0] || new Date().toISOString().split('T')[0]
                   });
                   existingIds.add(targetId);
                   existingNames.add(normalizedName);
                   hasChanges = true;
-              } else {
-                  // El nombre YA existe, pero con otro ID.
-                  // Opcional: Podríamos actualizar el ID del participante existente al nuevo deviceId si es más reciente,
-                  // pero por seguridad simplemente no creamos uno nuevo para no ensuciar la lista.
               }
           }
       });
@@ -213,17 +214,21 @@ export default function App() {
   // Guest photos should not be archived AND not be deleted
   const guestPhotos = useMemo(() => photos.filter(p => !p.isArchived && !p.isDeleted), [photos]);
 
+  // PAGINATION: Slice the visible photos
+  const visiblePhotos = useMemo(() => {
+      return guestPhotos.slice(0, visiblePhotosCount);
+  }, [guestPhotos, visiblePhotosCount]);
+
+  const handleLoadMore = () => {
+      setVisiblePhotosCount(prev => prev + PHOTOS_PER_PAGE);
+  };
+
   // Filter active participants (exclude deleted/trash)
   const activeParticipants = useMemo(() => 
     (activeEvent.participants || []).filter(p => p.status === 'confirmed'), 
   [activeEvent.participants]);
 
   // STATS CALCULATIONS
-  const uniqueContributors = useMemo(() => {
-      // Usamos los participantes registrados como fuente de verdad para el contador
-      return activeParticipants.length;
-  }, [activeParticipants]);
-
   const remainingSpotsDisplay = useMemo(() => {
       const totalCapacity = activeEvent.participantsCount || 0;
       const currentRegistered = activeParticipants.length;
@@ -282,28 +287,23 @@ export default function App() {
         }
 
         // 3. "Palabra Mágica" (Escribir 'admin' o 'login' en cualquier parte)
-        // Ignorar si el usuario está escribiendo en un input
         if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
             return;
         }
 
-        // Solo registrar letras
         if (e.key.length === 1 && /[a-zA-Z]/.test(e.key)) {
             buffer += e.key.toLowerCase();
-            // Mantener el buffer corto para no consumir memoria
             if (buffer.length > 10) buffer = buffer.slice(-10);
 
             if (buffer.endsWith('admin') || buffer.endsWith('login')) {
                 setShowLoginModal(true);
-                buffer = ''; // Reset
+                buffer = ''; 
             }
         } else {
-            // Resetear buffer si presiona teclas especiales para evitar falsos positivos
             if (e.key !== 'Shift') buffer = '';
         }
     };
 
-    // Mantener soporte para URL param ?admin=true
     const params = new URLSearchParams(window.location.search);
     if (params.get('admin') === 'true') {
         setShowLoginModal(true);
@@ -326,13 +326,11 @@ export default function App() {
       photos: [], 
       participants: []
     };
-    // Guardar en Firebase
     await saveEventToFirebase(newEvent);
     setCurrentEventId(id);
   };
 
   const handleUpdateEvent = async (updatedEvent: EventConfig) => {
-    // Guardar en Firebase
     await saveEventToFirebase(updatedEvent);
   };
 
@@ -371,7 +369,6 @@ export default function App() {
     }
   };
 
-  // SUBIDA DE FOTOS (CONECTADA A FIREBASE STORAGE)
   const handlePhotoUpload = async (files: File[], authorName: string) => {
     const newPhotos: Photo[] = [];
     const authorColor = activeEvent.theme?.primaryColor || '#a87b51';
@@ -393,15 +390,12 @@ export default function App() {
 
     if (newPhotos.length > 0) {
         let currentParticipants = [...(activeEvent.participants || [])];
-        // Usamos el ID del dispositivo actual para la lógica de subida
         const userId = deviceId; 
         
-        // Check if participant already exists by ID OR by Name to prevent duplicates
         const participantIndexById = currentParticipants.findIndex(p => p.id === userId);
         const participantIndexByName = currentParticipants.findIndex(p => p.name.toLowerCase() === authorName.toLowerCase());
         
         if (participantIndexById === -1 && participantIndexByName === -1) {
-            // Si no existe ni por ID ni por nombre, lo creamos
             const newParticipant: Participant = {
                 id: userId, 
                 name: authorName,
@@ -410,16 +404,14 @@ export default function App() {
             };
             currentParticipants.push(newParticipant);
         } else {
-             // Si existe, actualizamos el nombre si es necesario (y no es legacy)
              const indexToUpdate = participantIndexById !== -1 ? participantIndexById : participantIndexByName;
              
              if (indexToUpdate !== -1) {
-                 // Reactivar si estaba eliminado
                  if (currentParticipants[indexToUpdate].status === 'declined') {
                      currentParticipants[indexToUpdate] = {
                          ...currentParticipants[indexToUpdate],
                          status: 'confirmed',
-                         name: authorName // Actualizar nombre al más reciente
+                         name: authorName
                      };
                  }
              }
@@ -458,7 +450,6 @@ export default function App() {
             let updatedParticipants = [...(latestEvent.participants || [])];
             const importerDeviceId = `drive-importer-${latestEvent.id}`;
 
-            // Check duplication
             const existingIndex = updatedParticipants.findIndex(p => p.id === importerDeviceId || p.name === authorName);
             
             if (existingIndex === -1) {
@@ -548,7 +539,6 @@ export default function App() {
       
       photosToRestore.forEach(photo => {
           const participantId = photo.deviceId || `legacy-${photo.author.name.replace(/\s+/g, '-').toLowerCase()}`;
-          // Try find by ID, if not, by Name
           const pIndex = updatedParticipants.findIndex(p => p.id === participantId || p.name === photo.author.name);
           
           if (pIndex !== -1 && updatedParticipants[pIndex].status === 'declined') {
@@ -611,9 +601,8 @@ export default function App() {
 
     } catch (error: any) {
       console.error("Error en la eliminación permanente:", error);
-      
       if (error.message.includes("Permiso denegado") || error.code === 'storage/unauthorized' || error.code === 'permission-denied') {
-          alert("ERROR DE PERMISOS: Firebase bloqueó la eliminación. \n\nSolución: Ve a Firebase Console > Storage > Rules y cambia a 'allow read, write: if true;'");
+          alert("ERROR DE PERMISOS: Firebase bloqueó la eliminación.");
       } else {
           alert(`Hubo un error al eliminar los archivos: ${error.message}`);
       }
@@ -743,8 +732,6 @@ export default function App() {
           }
       `}</style>
       
-      {/* BOTON DE ADMIN ELIMINADO - Acceso mediante 5 Clics en Título, F2, Alt+L o escribiendo 'admin' */}
-
       {showLoginModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowLoginModal(false)} />
@@ -899,72 +886,86 @@ export default function App() {
                 )}
             </div>
         ) : (
-            // FORZAR 1 COLUMNA EN MÓVIL (grid-cols-1), 2 EN MD+ (md:grid-cols-2) SI columns=2
-            <div className={`grid gap-6 ${columns === 1 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
-            {guestPhotos.map((photo, index) => (
-                <div 
-                    key={photo.id} 
-                    className="rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden border border-gray-100"
-                    style={{ 
-                        backgroundColor: theme.cardBackgroundColor || '#ffffff' 
-                    }}
-                >
-                <div className="p-4 flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: photo.author.avatarColor, color: '#fff' }}>{photo.author.initials}</div>
-                    <div>
-                        <h3 className="font-bold text-base" style={{ color: theme.cardTextColor || '#1f2937' }}>{photo.author.name}</h3>
-                        {/* VALIDACIÓN DE FECHA PARA PREVENIR INVALID DATE */}
-                        <p className="text-xs font-medium opacity-90" style={{ color: theme.cardTextColor || '#6b7280' }}>
-                           {!isNaN(new Date(photo.createdAt).getTime()) 
-                                ? new Date(photo.createdAt).toLocaleString() 
-                                : photo.createdAt}
-                        </p>
-                    </div>
-                    </div>
-                    <button onClick={() => handleReport(photo.id)} className="hover:text-red-500 opacity-50 hover:opacity-100" style={{ color: theme.cardTextColor }}><Flag size={18} /></button>
-                </div>
-                <div 
-                    className="cursor-pointer bg-gray-100 relative aspect-[4/3] overflow-hidden" 
-                    onClick={() => setSelectedPhotoIndex(index)}
-                >
-                    {photo.type === 'video' ? (
-                        <div className="w-full h-full relative">
-                             <video src={photo.thumbnail} className="w-full h-full object-cover opacity-90 pointer-events-none" muted />
-                             <div className="absolute inset-0 flex items-center justify-center bg-black/20"><Video size={32} className="text-white" /></div>
-                        </div>
-                    ) : (
-                        <img src={photo.thumbnail} alt={photo.title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" loading="lazy" />
-                    )}
-                    <div className="absolute top-3 right-3 bg-black/50 backdrop-blur-sm text-white text-[10px] px-2 py-1 rounded uppercase font-bold">{photo.category}</div>
-                </div>
-                <div className="p-4 border-t flex items-center justify-between" style={{ borderColor: hexToRgba(theme.cardTextColor || '#000000', 0.1) }}>
-                    <button 
-                        onClick={() => handleLike(photo.id)} 
-                        className={`flex items-center gap-2 text-sm font-medium`} 
-                        style={{ color: photo.likedByMe ? theme.secondaryColor : (theme.cardTextColor || '#6b7280') }}
+            <>
+                {/* FORZAR 1 COLUMNA EN MÓVIL (grid-cols-1), 2 EN MD+ (md:grid-cols-2) SI columns=2 */}
+                <div className={`grid gap-6 ${columns === 1 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
+                {visiblePhotos.map((photo, index) => (
+                    <div 
+                        key={photo.id} 
+                        className="rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden border border-gray-100"
+                        style={{ 
+                            backgroundColor: theme.cardBackgroundColor || '#ffffff' 
+                        }}
                     >
-                        <Heart size={20} className={photo.likedByMe ? "fill-current" : ""} />
-                        <span>{photo.likes}</span>
-                    </button>
+                    <div className="p-4 flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: photo.author.avatarColor, color: '#fff' }}>{photo.author.initials}</div>
+                        <div>
+                            <h3 className="font-bold text-base" style={{ color: theme.cardTextColor || '#1f2937' }}>{photo.author.name}</h3>
+                            <p className="text-xs font-medium opacity-90" style={{ color: theme.cardTextColor || '#6b7280' }}>
+                            {!isNaN(new Date(photo.createdAt).getTime()) 
+                                    ? new Date(photo.createdAt).toLocaleString() 
+                                    : photo.createdAt}
+                            </p>
+                        </div>
+                        </div>
+                        <button onClick={() => handleReport(photo.id)} className="hover:text-red-500 opacity-50 hover:opacity-100" style={{ color: theme.cardTextColor }}><Flag size={18} /></button>
+                    </div>
+                    <div 
+                        className="cursor-pointer bg-gray-100 relative aspect-[4/3] overflow-hidden" 
+                        onClick={() => setSelectedPhotoIndex(index)}
+                    >
+                        {photo.type === 'video' ? (
+                            <div className="w-full h-full relative">
+                                <video src={photo.thumbnail} className="w-full h-full object-cover opacity-90 pointer-events-none" muted />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/20"><Video size={32} className="text-white" /></div>
+                            </div>
+                        ) : (
+                            <img src={photo.thumbnail} alt={photo.title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" loading="lazy" />
+                        )}
+                        <div className="absolute top-3 right-3 bg-black/50 backdrop-blur-sm text-white text-[10px] px-2 py-1 rounded uppercase font-bold">{photo.category}</div>
+                    </div>
+                    <div className="p-4 border-t flex items-center justify-between" style={{ borderColor: hexToRgba(theme.cardTextColor || '#000000', 0.1) }}>
+                        <button 
+                            onClick={() => handleLike(photo.id)} 
+                            className={`flex items-center gap-2 text-sm font-medium`} 
+                            style={{ color: photo.likedByMe ? theme.secondaryColor : (theme.cardTextColor || '#6b7280') }}
+                        >
+                            <Heart size={20} className={photo.likedByMe ? "fill-current" : ""} />
+                            <span>{photo.likes}</span>
+                        </button>
+                    </div>
+                    </div>
+                ))}
                 </div>
-                </div>
-            ))}
-            </div>
+
+                {/* PAGINATION LOAD MORE BUTTON */}
+                {visiblePhotosCount < guestPhotos.length && (
+                    <div className="flex justify-center mt-10 mb-6">
+                        <button 
+                            onClick={handleLoadMore}
+                            className="flex items-center gap-2 px-8 py-3 rounded-full bg-white shadow-md border border-gray-200 text-gray-600 font-bold hover:bg-gray-50 hover:text-gray-900 transition-all transform hover:scale-105"
+                        >
+                            <ChevronDown size={20} />
+                            Cargar más recuerdos ({guestPhotos.length - visiblePhotosCount} restantes)
+                        </button>
+                    </div>
+                )}
+            </>
         )}
       </main>
 
       <Lightbox 
-        photo={selectedPhotoIndex !== null ? guestPhotos[selectedPhotoIndex] : null}
+        photo={selectedPhotoIndex !== null ? visiblePhotos[selectedPhotoIndex] : null}
         isOpen={selectedPhotoIndex !== null}
         onClose={() => setSelectedPhotoIndex(null)}
-        onNext={() => selectedPhotoIndex !== null && selectedPhotoIndex < guestPhotos.length - 1 && setSelectedPhotoIndex(selectedPhotoIndex + 1)}
+        onNext={() => selectedPhotoIndex !== null && selectedPhotoIndex < visiblePhotos.length - 1 && setSelectedPhotoIndex(selectedPhotoIndex + 1)}
         onPrev={() => selectedPhotoIndex !== null && selectedPhotoIndex > 0 && setSelectedPhotoIndex(selectedPhotoIndex - 1)}
-        hasNext={selectedPhotoIndex !== null && selectedPhotoIndex < guestPhotos.length - 1}
+        hasNext={selectedPhotoIndex !== null && selectedPhotoIndex < visiblePhotos.length - 1}
         hasPrev={selectedPhotoIndex !== null && selectedPhotoIndex > 0}
         onLike={handleLike}
         onReport={handleReport}
-        allPhotos={guestPhotos}
+        allPhotos={visiblePhotos}
         onSelect={setSelectedPhotoIndex}
       />
 

@@ -265,6 +265,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleBannerChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
+      if (!activeEvent.id) {
+          alert("Error: ID de evento no válido.");
+          return;
+      }
       setIsUploadingBanner(true);
       const file = e.target.files[0];
       try {
@@ -286,6 +290,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
+      if (!activeEvent.id) {
+          alert("Error: ID de evento no válido.");
+          return;
+      }
       setIsUploadingAvatar(true);
       const file = e.target.files[0];
       try {

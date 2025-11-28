@@ -147,6 +147,78 @@ export const uploadFileToFirebase = async (file: File, path: string): Promise<st
 };
 
 /**
+ * COMPRIMIR IMAGEN (OPTIMIZACIÓN DE COSTOS)
+ * Redimensiona a Full HD (1920x1080 max) y comprime a JPEG 0.8
+ */
+const compressImage = (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+        // Si no es imagen (ej: video), devolver original
+        if (!file.type.startsWith('image/')) {
+            resolve(file);
+            return;
+        }
+
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        
+        img.onload = () => {
+            const MAX_WIDTH = 1920;
+            const MAX_HEIGHT = 1920;
+            let width = img.width;
+            let height = img.height;
+
+            // Calcular nuevas dimensiones manteniendo aspecto
+            if (width > height) {
+                if (width > MAX_WIDTH) {
+                    height *= MAX_WIDTH / width;
+                    width = MAX_WIDTH;
+                }
+            } else {
+                if (height > MAX_HEIGHT) {
+                    width *= MAX_HEIGHT / height;
+                    height = MAX_HEIGHT;
+                }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                URL.revokeObjectURL(url);
+                resolve(file); // Fallback a original si falla canvas
+                return;
+            }
+
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            canvas.toBlob((blob) => {
+                URL.revokeObjectURL(url);
+                if (blob) {
+                    // Crear nuevo archivo comprimido manteniendo nombre original pero extensión jpg
+                    const newName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+                    const compressedFile = new File([blob], newName, {
+                        type: 'image/jpeg',
+                        lastModified: Date.now(),
+                    });
+                    resolve(compressedFile);
+                } else {
+                    resolve(file); // Fallback
+                }
+            }, 'image/jpeg', 0.8); // Calidad 80%
+        };
+
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(file); // Fallback
+        };
+
+        img.src = url;
+    });
+};
+
+/**
  * PROCESAR Y SUBIR FOTOS
  * Reemplaza la lógica local. Sube el archivo real a Storage y devuelve el objeto Photo.
  * MODIFICADO: Ahora guarda en eventos/{ID}/fotos/ para mantener orden estricto.
@@ -158,28 +230,42 @@ export const processAndUploadPhoto = async (
   authorColor: string,
   deviceId: string
 ): Promise<Photo> => {
+  // VALIDACIÓN DE SEGURIDAD: Evitar subidas a rutas huérfanas
+  if (!eventId) throw new Error("ID de evento requerido para mantener la organización de carpetas.");
+
   const isVideo = file.type.startsWith('video/') || file.type === 'video/quicktime';
   const timestamp = Date.now();
   
+  // OPTIMIZACIÓN: Comprimir imagen antes de subir (Solo si no es video)
+  let fileToUpload = file;
+  if (!isVideo) {
+      try {
+          fileToUpload = await compressImage(file);
+          console.log(`Comprimido: ${(file.size/1024).toFixed(2)}KB -> ${(fileToUpload.size/1024).toFixed(2)}KB`);
+      } catch (e) {
+          console.warn("Falló compresión, subiendo original", e);
+      }
+  }
+
   // Limpiamos el nombre del archivo para evitar caracteres raros en Storage
-  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+  const sanitizedFileName = fileToUpload.name.replace(/[^a-zA-Z0-9.]/g, '_');
   const uniqueFileName = `${timestamp}_${sanitizedFileName}`;
   
-  // ESTRUCTURA DE CARPETAS SOLICITADA: eventos/{ID_DEL_EVENTO}/fotos/{nombre_archivo_unico}
+  // ESTRUCTURA DE CARPETAS ESTRICTA: eventos/{ID_DEL_EVENTO}/fotos/{nombre_archivo_unico}
   const path = `eventos/${eventId}/fotos/${uniqueFileName}`;
 
-  // 1. Subir el archivo original a Firebase Storage
-  const downloadUrl = await uploadFileToFirebase(file, path);
+  // 1. Subir el archivo (posiblemente comprimido) a Firebase Storage
+  const downloadUrl = await uploadFileToFirebase(fileToUpload, path);
 
   // 2. Crear el objeto Photo
   const newPhoto: Photo = {
     id: `photo-${timestamp}`,
     url: downloadUrl,
-    thumbnail: downloadUrl, // Idealmente sería una versión reducida
+    thumbnail: downloadUrl, // Idealmente sería una versión reducida, pero usamos la comprimida
     width: 800, // Valor estimado
     height: 600,
-    title: file.name,
-    category: 'General', // Se puede ajustar después
+    title: file.name, // Mantenemos nombre original para display
+    category: 'General', 
     likes: 0,
     likedByMe: false,
     isArchived: false,
