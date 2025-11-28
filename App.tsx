@@ -22,8 +22,13 @@ import {
   Video,
   Loader2,
   Lock,
-  ChevronDown
+  ChevronDown,
+  Check,
+  CheckCircle,
+  Package
 } from 'lucide-react';
+import JSZip from 'jszip';
+import saveAs from 'file-saver';
 
 // --- PLANTILLA POR DEFECTO ---
 const DEFAULT_EVENT_TEMPLATE: EventConfig = {
@@ -87,6 +92,11 @@ export default function App() {
   const PHOTOS_PER_PAGE = 12;
   const [visiblePhotosCount, setVisiblePhotosCount] = useState(PHOTOS_PER_PAGE);
 
+  // DOWNLOAD SELECTION MODE STATES
+  const [isDownloadSelectionMode, setIsDownloadSelectionMode] = useState(false);
+  const [downloadSelection, setDownloadSelection] = useState<Set<string>>(new Set());
+  const [isZippingSelected, setIsZippingSelected] = useState(false);
+
   // --- IDENTIFICACIÓN DE DISPOSITIVO ---
   useEffect(() => {
     // Intentar obtener ID del localStorage
@@ -148,6 +158,8 @@ export default function App() {
       }
       // Reset pagination on event change
       setVisiblePhotosCount(PHOTOS_PER_PAGE);
+      setIsDownloadSelectionMode(false);
+      setDownloadSelection(new Set());
   }, [currentEventId]);
 
   const activeEvent = useMemo(() => 
@@ -662,6 +674,67 @@ export default function App() {
       handleUpdateEvent({ ...activeEvent, photos: updatedPhotos });
   };
 
+  // --- SELECTION & DOWNLOAD LOGIC ---
+  const handleEnableSelectionMode = () => {
+      setIsDownloadSelectionMode(true);
+      setDownloadSelection(new Set());
+      setIsDownloadModalOpen(false); // Close download modal to show gallery
+  };
+
+  const toggleDownloadSelection = (id: string) => {
+      const newSet = new Set(downloadSelection);
+      if (newSet.has(id)) {
+          newSet.delete(id);
+      } else {
+          newSet.add(id);
+      }
+      setDownloadSelection(newSet);
+  };
+
+  const handleDownloadSelectedFiles = async () => {
+      const selectedIds = Array.from(downloadSelection);
+      const photosToDownload = guestPhotos.filter(p => selectedIds.includes(p.id));
+      
+      if (photosToDownload.length === 0) return;
+
+      setIsZippingSelected(true);
+      
+      try {
+          const zip = new JSZip();
+          const folder = zip.folder("recuerdos_seleccionados");
+          let failedCount = 0;
+
+          for (const photo of photosToDownload) {
+              if (!photo.url) continue;
+              try {
+                  const response = await fetch(photo.url, { credentials: 'omit', cache: 'no-store' });
+                  if (!response.ok) throw new Error("Fetch failed");
+                  const blob = await response.blob();
+                  const filename = `${(photo.title || 'foto').replace(/[^a-z0-9]/gi, '_')}_${photo.id.slice(-4)}.jpg`;
+                  folder?.file(filename, blob);
+              } catch (err) {
+                  console.warn("Failed to download photo for zip:", photo.id, err);
+                  failedCount++;
+              }
+          }
+
+          if (failedCount === photosToDownload.length) {
+              // ALL FAILED - Show error, DO NOT download text file
+              alert("Error: No se pudieron descargar los archivos seleccionados debido a problemas de red o seguridad.");
+          } else {
+              const content = await zip.generateAsync({ type: "blob" });
+              saveAs(content, "seleccion_recuerdos.zip");
+          }
+      } catch (error) {
+          console.error("Zip generation error:", error);
+          alert("Error generando el archivo ZIP.");
+      } finally {
+          setIsZippingSelected(false);
+          setIsDownloadSelectionMode(false);
+          setDownloadSelection(new Set());
+      }
+  };
+
   // --- RENDER ---
   const theme = activeEvent.theme || DEFAULT_EVENT_TEMPLATE.theme!;
   const fontClass = theme.fontFamily === 'serif' ? 'font-serif' : 'font-sans';
@@ -754,6 +827,33 @@ export default function App() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* SELECTION MODE STICKY HEADER/BAR */}
+      {isDownloadSelectionMode && (
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-xl p-4 animate-slide-up">
+              <div className="max-w-4xl mx-auto flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                      <button 
+                          onClick={() => { setIsDownloadSelectionMode(false); setDownloadSelection(new Set()); }}
+                          className="text-gray-500 font-medium hover:text-gray-800 transition-colors"
+                      >
+                          Cancelar
+                      </button>
+                      <span className="text-sm font-bold text-gray-700 bg-gray-100 px-3 py-1 rounded-full">
+                          {downloadSelection.size} seleccionados
+                      </span>
+                  </div>
+                  <button 
+                      onClick={handleDownloadSelectedFiles}
+                      disabled={downloadSelection.size === 0 || isZippingSelected}
+                      className="bg-blue-600 text-white px-6 py-2.5 rounded-full font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                      {isZippingSelected ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
+                      {isZippingSelected ? 'Procesando...' : `Descargar (${downloadSelection.size})`}
+                  </button>
+              </div>
+          </div>
       )}
 
       <div className="relative mb-8 group overflow-hidden">
@@ -861,10 +961,10 @@ export default function App() {
             >
             <div className="flex items-center gap-4 w-full sm:w-auto">
                 <span className="font-bold flex items-center gap-2"><LayoutGrid size={20} /> Vista de Galería</span>
-                {/* BUTTONS HIDDEN ON MOBILE (1 col forced), VISIBLE ON MD+ */}
-                <div className="hidden md:flex gap-2 ml-auto sm:ml-4">
-                <button onClick={() => setColumns(1)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 1 ? 'shadow-sm' : 'bg-transparent border-current opacity-70'}`} style={columns === 1 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor, borderColor: theme.secondaryColor } : {}}><LayoutList size={16} /></button>
-                <button onClick={() => setColumns(2)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 2 ? 'shadow-sm' : 'bg-transparent border-current opacity-70'}`} style={columns === 2 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor, borderColor: theme.secondaryColor } : {}}><LayoutGrid size={16} /></button>
+                {/* Ocultar en móvil si no es modo selección */}
+                <div className={`hidden md:flex gap-2 ml-auto sm:ml-4 ${isDownloadSelectionMode ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <button onClick={() => setColumns(1)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 1 ? 'shadow-sm' : 'bg-transparent border-current opacity-70'}`} style={columns === 1 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor, borderColor: theme.secondaryColor } : {}}><LayoutList size={16} /></button>
+                    <button onClick={() => setColumns(2)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 2 ? 'shadow-sm' : 'bg-transparent border-current opacity-70'}`} style={columns === 2 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor, borderColor: theme.secondaryColor } : {}}><LayoutGrid size={16} /></button>
                 </div>
             </div>
             </div>
@@ -892,7 +992,7 @@ export default function App() {
                 {visiblePhotos.map((photo, index) => (
                     <div 
                         key={photo.id} 
-                        className="rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden border border-gray-100"
+                        className={`rounded-xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden border ${isDownloadSelectionMode && downloadSelection.has(photo.id) ? 'border-4 border-blue-500 ring-4 ring-blue-100 scale-[0.98]' : 'border-gray-100'}`}
                         style={{ 
                             backgroundColor: theme.cardBackgroundColor || '#ffffff' 
                         }}
@@ -912,9 +1012,23 @@ export default function App() {
                         <button onClick={() => handleReport(photo.id)} className="hover:text-red-500 opacity-50 hover:opacity-100" style={{ color: theme.cardTextColor }}><Flag size={18} /></button>
                     </div>
                     <div 
-                        className="cursor-pointer bg-gray-100 relative aspect-[4/3] overflow-hidden" 
-                        onClick={() => setSelectedPhotoIndex(index)}
+                        className="cursor-pointer bg-gray-100 relative aspect-[4/3] overflow-hidden group" 
+                        onClick={() => {
+                            if (isDownloadSelectionMode) {
+                                toggleDownloadSelection(photo.id);
+                            } else {
+                                setSelectedPhotoIndex(index);
+                            }
+                        }}
                     >
+                        {isDownloadSelectionMode && (
+                            <div className={`absolute inset-0 z-20 transition-colors flex items-center justify-center ${downloadSelection.has(photo.id) ? 'bg-blue-500/20' : 'bg-black/0 group-hover:bg-black/10'}`}>
+                                <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shadow-lg transition-all transform ${downloadSelection.has(photo.id) ? 'bg-blue-500 border-blue-500 scale-110' : 'bg-white border-gray-300 scale-100'}`}>
+                                    {downloadSelection.has(photo.id) && <Check size={18} className="text-white" strokeWidth={3} />}
+                                </div>
+                            </div>
+                        )}
+
                         {photo.type === 'video' ? (
                             <div className="w-full h-full relative">
                                 <video src={photo.thumbnail} className="w-full h-full object-cover opacity-90 pointer-events-none" muted />
@@ -976,7 +1090,12 @@ export default function App() {
         onUpload={handlePhotoUpload}
         deviceId={deviceId}
       />
-      <DownloadModal isOpen={isDownloadModalOpen} onClose={() => setIsDownloadModalOpen(false)} event={activeEvent} />
+      <DownloadModal 
+        isOpen={isDownloadModalOpen} 
+        onClose={() => setIsDownloadModalOpen(false)} 
+        event={activeEvent} 
+        onSelectManual={handleEnableSelectionMode}
+      />
     </div>
   );
 }

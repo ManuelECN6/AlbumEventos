@@ -221,7 +221,7 @@ const compressImage = (file: File): Promise<File> => {
 /**
  * PROCESAR Y SUBIR FOTOS
  * Reemplaza la lógica local. Sube el archivo real a Storage y devuelve el objeto Photo.
- * MODIFICADO: Ahora guarda en eventos/{ID}/fotos/ para mantener orden estricto.
+ * MODIFICADO: Ahora guarda en eventos/{ID}/{USUARIO}/{TIMESTAMP}_archivo para mantener orden estricto.
  */
 export const processAndUploadPhoto = async (
   file: File, 
@@ -251,8 +251,10 @@ export const processAndUploadPhoto = async (
   const sanitizedFileName = fileToUpload.name.replace(/[^a-zA-Z0-9.]/g, '_');
   const uniqueFileName = `${timestamp}_${sanitizedFileName}`;
   
-  // ESTRUCTURA DE CARPETAS ESTRICTA: eventos/{ID_DEL_EVENTO}/fotos/{nombre_archivo_unico}
-  const path = `eventos/${eventId}/fotos/${uniqueFileName}`;
+  // ESTRUCTURA DE CARPETAS SOLICITADA: eventos/{ID_DEL_EVENTO}/{USUARIO_ID}/{TIMESTAMP_ARCHIVO}
+  // Usamos deviceId como usuarioID. Si no existe, fallback a 'anonimo' para no romper la ruta.
+  const userIdFolder = deviceId || 'anonimo';
+  const path = `eventos/${eventId}/${userIdFolder}/${uniqueFileName}`;
 
   // 1. Subir el archivo (posiblemente comprimido) a Firebase Storage
   const downloadUrl = await uploadFileToFirebase(fileToUpload, path);

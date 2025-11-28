@@ -31,10 +31,12 @@ export const Lightbox: React.FC<LightboxProps> = ({
   onSelect
 }) => {
   const [showReportConfirm, setShowReportConfirm] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Reset confirmation state when photo changes
   useEffect(() => {
     setShowReportConfirm(false);
+    setIsDownloading(false);
   }, [photo?.id]);
 
   // Handle keyboard navigation
@@ -67,6 +69,39 @@ export const Lightbox: React.FC<LightboxProps> = ({
   const getFormattedDate = (dateString: string) => {
       const date = new Date(dateString);
       return !isNaN(date.getTime()) ? date.toLocaleString() : dateString;
+  };
+
+  // Función de descarga robusta
+  const handleDownload = async () => {
+    if (!photo) return;
+    setIsDownloading(true);
+    
+    try {
+      // Intentamos descargar el blob para forzar "Guardar como"
+      const response = await fetch(photo.url, { credentials: 'omit', cache: 'no-store' });
+      if (!response.ok) throw new Error('Network response was not ok');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Nombre de archivo limpio
+      const ext = photo.type === 'video' ? 'mp4' : 'jpg';
+      const cleanTitle = (photo.title || 'recuerdo').replace(/[^a-z0-9]/gi, '_');
+      link.download = `${cleanTitle}.${ext}`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.warn("Download via blob failed (likely CORS), falling back to new tab", error);
+      // Fallback: Abrir en nueva pestaña si falla el fetch (CORS o error de red)
+      window.open(photo.url, '_blank');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
@@ -190,17 +225,15 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 {photo.likedByMe ? "Te gusta" : "Me gusta"} ({photo.likes})
               </button>
               
-              {/* Download Button (Restored) */}
-              <a 
-                href={photo.url}
-                download={photo.title || 'foto'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 px-6 py-2 rounded-md border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 font-medium transition-colors text-sm"
+              {/* Download Button (Enhanced) */}
+              <button 
+                onClick={handleDownload}
+                disabled={isDownloading}
+                className="flex items-center justify-center gap-2 px-6 py-2 rounded-md border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 font-medium transition-colors text-sm disabled:opacity-50"
               >
                 <Download size={16} />
-                Descargar
-              </a>
+                {isDownloading ? 'Bajando...' : 'Descargar'}
+              </button>
               
               {/* Report Button */}
               <button 

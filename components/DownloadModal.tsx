@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Download, Shield, Key, Lock, ArrowLeft, Clipboard, CheckCircle, Loader2, AlertCircle, Video, Image as ImageIcon, FileText, Package } from 'lucide-react';
+import { Download, Shield, Key, Lock, ArrowLeft, Clipboard, CheckCircle, Loader2, AlertCircle, Video, Image as ImageIcon, FileText, Package, CheckSquare } from 'lucide-react';
 import { EventConfig } from '../types';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
@@ -9,9 +9,10 @@ interface DownloadModalProps {
   isOpen: boolean;
   onClose: () => void;
   event: EventConfig;
+  onSelectManual: () => void;
 }
 
-export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, event }) => {
+export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, event, onSelectManual }) => {
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState<'idle' | 'ready' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -84,34 +85,6 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, e
     setTimeout(() => setIsShaking(false), 500);
   };
 
-  const handleDownloadLinks = (type: 'photos' | 'videos') => {
-    const files = event.photos.filter(p => type === 'photos' ? p.type !== 'video' : p.type === 'video');
-    
-    if (files.length === 0) {
-        alert(`No hay ${type === 'photos' ? 'fotos' : 'videos'} para descargar.`);
-        return;
-    }
-
-    // Generar contenido del archivo de texto
-    let content = `ENLACES DE DESCARGA - ${event.title}\n`;
-    content += `Total de archivos: ${files.length}\n\n`;
-    
-    files.forEach((f, index) => {
-        content += `${index + 1}. ${f.url}\n`;
-    });
-
-    // Crear Blob y descargar
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${event.title.replace(/\s+/g, '_')}_enlaces_${type}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   const handleDownloadZip = async () => {
     const photosToDownload = event.photos.filter(p => p.type !== 'video'); // Only photos to prevent crash
     
@@ -127,25 +100,56 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, e
         const zip = new JSZip();
         const folder = zip.folder("fotos");
         let completed = 0;
+        let failedCount = 0;
 
         for (const photo of photosToDownload) {
-            try {
-                // Fetch the image
-                const response = await fetch(photo.url, { mode: 'cors' });
-                const blob = await response.blob();
-                
-                // Clean filename
-                const filename = photo.title && photo.title.length < 30 
-                    ? `${photo.title.replace(/[^a-z0-9]/gi, '_')}.jpg`
-                    : `foto_${completed + 1}.jpg`;
+            if (!photo.url) continue;
 
+            let blob = null;
+            let attempts = 0;
+            const maxAttempts = 3;
+
+            // Retry logic
+            while (!blob && attempts < maxAttempts) {
+                try {
+                    // Fetch with omitted credentials to avoid CORS issues on public buckets
+                    // and no-store to prevent caching issues
+                    const response = await fetch(photo.url, { 
+                        credentials: 'omit',
+                        cache: 'no-store'
+                    });
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    blob = await response.blob();
+                } catch (err) {
+                    attempts++;
+                    // Exponential backoff: 500ms, 1000ms, 1500ms...
+                    await new Promise(r => setTimeout(r, 500 * attempts));
+                }
+            }
+
+            if (blob) {
+                // Clean filename
+                const filename = photo.title && photo.title.length < 50 
+                    ? `${photo.title.replace(/[^a-z0-9]/gi, '_')}.jpg`
+                    : `foto_${photo.id}.jpg`;
                 folder?.file(filename, blob);
-            } catch (err) {
-                console.error(`Error descargando ${photo.id}:`, err);
+            } else {
+                console.warn(`Failed to fetch photo ${photo.id} after ${maxAttempts} attempts.`);
+                failedCount++;
             }
             
             completed++;
             setZipProgress(Math.round((completed / photosToDownload.length) * 100));
+        }
+
+        if (failedCount === photosToDownload.length) {
+            alert("No se pudieron descargar las imágenes. Por favor verifica tu conexión a internet o intenta más tarde.");
+            onClose();
+            return;
+        }
+
+        if (failedCount > 0) {
+             alert(`Advertencia: ${failedCount} fotos no se pudieron descargar debido a errores de conexión. Se generará el ZIP con el resto.`);
         }
 
         // Generate ZIP
@@ -155,7 +159,7 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, e
         onClose();
     } catch (error) {
         console.error("Error generando ZIP:", error);
-        alert("Hubo un error generando el ZIP. Es posible que algunas imágenes tengan restricciones de seguridad. Intenta descargar la lista de enlaces.");
+        alert("Hubo un error inesperado generando el ZIP.");
     } finally {
         setIsZipping(false);
         setZipProgress(0);
@@ -163,7 +167,6 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, e
   };
 
   const hasPhotos = event.allowedMediaTypes.includes('photo');
-  const hasVideos = event.allowedMediaTypes.includes('video');
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in">
@@ -222,45 +225,31 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, e
                             Elige cómo quieres descargar los recuerdos.
                         </p>
                         
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                             {/* Main ZIP Download Button */}
                             {hasPhotos && (
                                 <button 
                                     onClick={handleDownloadZip}
-                                    className="w-full font-bold py-3.5 rounded-full shadow-lg transition-all transform hover:scale-[1.02] hover:shadow-xl flex items-center justify-center gap-2 relative overflow-hidden group"
+                                    className="w-full font-bold py-4 rounded-full shadow-lg transition-all transform hover:scale-[1.02] hover:shadow-xl flex items-center justify-center gap-2 relative overflow-hidden group"
                                     style={{ 
                                         background: `linear-gradient(to right, ${theme.primaryColor}, ${theme.secondaryColor})`,
                                         color: theme.primaryTextColor 
                                     }}
                                 >
                                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                                    <Package size={20} />
-                                    Descargar Todo (ZIP)
+                                    <Package size={22} />
+                                    <span className="text-base">Descargar Todo (ZIP)</span>
                                 </button>
                             )}
 
-                            <div className="relative py-2">
-                                <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-gray-200"></span></div>
-                                <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-gray-500">O descargar listas</span></div>
-                            </div>
-
+                            {/* MANUAL SELECTION BUTTON */}
                             {hasPhotos && (
                                 <button 
-                                    onClick={() => handleDownloadLinks('photos')}
-                                    className="w-full bg-gray-50 border border-gray-200 text-gray-700 font-bold py-3 rounded-full hover:bg-gray-100 transition-colors flex items-center justify-center gap-2 text-sm"
+                                    onClick={onSelectManual}
+                                    className="w-full font-bold py-3.5 rounded-full border-2 border-dashed border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
                                 >
-                                    <FileText size={16} />
-                                    Lista de Enlaces Fotos (.txt)
-                                </button>
-                            )}
-                            
-                            {hasVideos && (
-                                <button 
-                                    onClick={() => handleDownloadLinks('videos')}
-                                    className="w-full bg-gray-50 border border-gray-200 text-gray-700 font-bold py-3 rounded-full hover:bg-gray-100 transition-colors flex items-center justify-center gap-2 text-sm"
-                                >
-                                    <FileText size={16} />
-                                    Lista de Enlaces Videos (.txt)
+                                    <CheckSquare size={20} className="text-gray-500" />
+                                    Seleccionar Fotos Manualmente
                                 </button>
                             )}
                         </div>
