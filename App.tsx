@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Lightbox } from './components/Lightbox';
 import { UploadModal } from './components/UploadModal';
 import { DownloadModal } from './components/DownloadModal';
@@ -241,7 +241,27 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
 
-  // --- LISTENER PARA ACCESO OCULTO (BACKDOOR) ---
+  // --- SECRET ADMIN ACCESS (CLICK TRIGGER) ---
+  const clickCountRef = useRef(0);
+  const lastClickTimeRef = useRef(0);
+
+  const handleTitleClick = () => {
+      const now = Date.now();
+      // Reset if too slow (more than 1 second between clicks)
+      if (now - lastClickTimeRef.current > 1000) {
+          clickCountRef.current = 0;
+      }
+      
+      clickCountRef.current += 1;
+      lastClickTimeRef.current = now;
+
+      if (clickCountRef.current >= 5) {
+          setShowLoginModal(true);
+          clickCountRef.current = 0; // Reset after triggering
+      }
+  };
+
+  // --- LISTENER PARA ACCESO OCULTO (TECLADO) ---
   useEffect(() => {
     let buffer = '';
     
@@ -707,7 +727,7 @@ export default function App() {
         className={`min-h-screen pb-8 relative font-sans transition-colors duration-500 ${fontClass} select-none`}
         style={{ backgroundColor: theme.backgroundColor, color: theme.textColor }}
     >
-      {/* BOTON DE ADMIN ELIMINADO - Acceso mediante F2, Alt+L o escribiendo 'admin' */}
+      {/* BOTON DE ADMIN ELIMINADO - Acceso mediante 5 Clics en Título, F2, Alt+L o escribiendo 'admin' */}
 
       {showLoginModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -775,7 +795,12 @@ export default function App() {
                 )}
                 
                 <div>
-                <h1 className="text-2xl md:text-3xl font-bold" style={{ color: theme.headerTitleColor || theme.textColor }}>
+                <h1 
+                    onClick={handleTitleClick}
+                    className="text-2xl md:text-3xl font-bold cursor-default select-none active:opacity-80 transition-opacity" 
+                    style={{ color: theme.headerTitleColor || theme.textColor }}
+                    title=" " // Hide tooltip
+                >
                     {activeEvent.title}
                 </h1>
                 <div className="flex flex-wrap items-center gap-2 text-sm mt-1">
@@ -834,7 +859,8 @@ export default function App() {
             >
             <div className="flex items-center gap-4 w-full sm:w-auto">
                 <span className="font-bold flex items-center gap-2"><LayoutGrid size={20} /> Vista de Galería</span>
-                <div className="flex gap-2 ml-auto sm:ml-4">
+                {/* BUTTONS HIDDEN ON MOBILE (1 col forced), VISIBLE ON MD+ */}
+                <div className="hidden md:flex gap-2 ml-auto sm:ml-4">
                 <button onClick={() => setColumns(1)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 1 ? 'shadow-sm' : 'bg-transparent border-current opacity-70'}`} style={columns === 1 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor, borderColor: theme.secondaryColor } : {}}><LayoutList size={16} /></button>
                 <button onClick={() => setColumns(2)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 2 ? 'shadow-sm' : 'bg-transparent border-current opacity-70'}`} style={columns === 2 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor, borderColor: theme.secondaryColor } : {}}><LayoutGrid size={16} /></button>
                 </div>
@@ -858,6 +884,7 @@ export default function App() {
                 )}
             </div>
         ) : (
+            // FORZAR 1 COLUMNA EN MÓVIL (grid-cols-1), 2 EN MD+ (md:grid-cols-2) SI columns=2
             <div className={`grid gap-6 ${columns === 1 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
             {guestPhotos.map((photo, index) => (
                 <div 

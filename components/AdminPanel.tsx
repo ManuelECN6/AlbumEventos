@@ -71,6 +71,8 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     isDriveBackupEnabled: false
 };
 
+const APP_URL = "https://lbum-digital-inteligente-464233428626.us-west1.run.app";
+
 // --- OPTIMIZED COLOR PICKER COMPONENT ---
 const ColorPicker = ({ label, value, onChange, fallback }: { label: string, value?: string, onChange: (val: string) => void, fallback: string }) => {
     const [internalColor, setInternalColor] = useState(value || fallback);
@@ -189,7 +191,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Participants State
   const [newParticipantName, setNewParticipantName] = useState('');
   const [participantSearch, setParticipantSearch] = useState('');
-  const [participantViewMode, setParticipantViewMode] = useState<'active' | 'trash'>('active');
 
   // Category State
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -413,7 +414,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans">
       {/* Sidebar */}
       <aside className="w-64 bg-gray-900 text-gray-300 flex flex-col shadow-2xl z-20 shrink-0">
-        {/* ... (Sidebar Content Same as before) ... */}
         <div className="p-6 border-b border-gray-800">
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
             <Settings className="text-[#4f46e5]" />
@@ -1012,7 +1012,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                  </div>
             </div>
           )}
-          {/* ... (rest of the file remains unchanged) ... */}
+          
           {activeTab === 'categories' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 {/* Sidebar: Add New */}
@@ -1220,13 +1220,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           )}
 
-          {/* ... Other Tabs (General, Gallery, Clients) ... */}
           {activeTab === 'general' && (
-              /* ... General Tab Content ... */
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                  {/* ... Content Hidden for brevity ... */}
                   <div className="lg:col-span-2 space-y-6">
-                      {/* ... Main Info, Drive Backup, Config ... */}
+                      {/* Main Info */}
                       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                                 <FileText className="text-[#4f46e5]" />
@@ -1242,7 +1239,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                         className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none"
                                     />
                                 </div>
-                                {/* ... subtitle, date ... */}
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Subtítulo / Tipo</label>
@@ -1277,7 +1273,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                       {/* Drive Backup */}
                       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                           {/* ... Drive backup content ... */}
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                                     <Cloud className="text-blue-500" />
@@ -1313,11 +1308,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                         ) : (
                                             <div className="flex items-center justify-between">
                                                 <span className="text-sm text-gray-600">No hay carpeta vinculada.</span>
-                                                {/* We use a dedicated component to handle auth and folder creation */}
                                                 <GoogleDriveBackup 
                                                     eventName={localConfig.title}
                                                     onFolderCreated={(folderId, folderUrl) => {
-                                                        // Atomic update to ensure persistence
                                                         onUpdateField('googleDriveFolderId', folderId);
                                                         onUpdateField('googleDriveUrl', folderUrl);
                                                         setLocalConfig(prev => ({ ...prev, googleDriveUrl: folderUrl }));
@@ -1332,7 +1325,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                       {/* Config & Limits */}
                       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                          {/* ... Limits content ... */}
                            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                                 <Sliders className="text-gray-600" />
                                 Configuración y Límites
@@ -1371,8 +1363,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     </div>
                                 </div>
                                 
-                                {/* ... More limits ... */}
-                                 <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Máx Fotos / Persona</label>
                                         <input 
@@ -1388,6 +1379,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                             type="number" 
                                             value={localConfig.maxVideosPerPerson} 
                                             onChange={(e) => setLocalConfig({...localConfig, maxVideosPerPerson: parseInt(e.target.value)})}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4f46e5] outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Tamaño Máx por Video (MB)</label>
+                                        <input 
+                                            type="number" 
+                                            value={localConfig.maxVideoSizeMB || 50} 
+                                            onChange={(e) => setLocalConfig({...localConfig, maxVideoSizeMB: parseInt(e.target.value)})}
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#4f46e5] outline-none"
                                         />
                                     </div>
@@ -1621,7 +1624,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
           
           {activeTab === 'clients' && (
-              /* ... Clients Content ... */
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
                   <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
                       <UserCheck className="text-[#4f46e5]" /> Gestión de Cliente y Accesos
@@ -1663,11 +1665,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   <ExternalLink size={18} /> Enlace Público
                               </h4>
                               <p className="text-blue-600/80 text-xs mb-3 break-all">
-                                  {window.location.origin}?event={activeEvent.publicToken || activeEvent.id}
+                                  {APP_URL}?event={activeEvent.publicToken || activeEvent.id}
                               </p>
                               <button 
                                 onClick={() => {
-                                    navigator.clipboard.writeText(`${window.location.origin}?event=${activeEvent.publicToken || activeEvent.id}`);
+                                    navigator.clipboard.writeText(`${APP_URL}?event=${activeEvent.publicToken || activeEvent.id}`);
                                     setIsLinkCopied(true);
                                     setTimeout(() => setIsLinkCopied(false), 2000);
                                 }}
@@ -1695,7 +1697,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                            <div className="bg-white p-4 rounded-xl shadow-sm mb-6">
                                <QRCode 
                                     id="qr-code-svg"
-                                    value={`${window.location.origin}?event=${activeEvent.publicToken || activeEvent.id}`} 
+                                    value={`${APP_URL}?event=${activeEvent.publicToken || activeEvent.id}`} 
                                     size={180}
                                     level="H"
                                />

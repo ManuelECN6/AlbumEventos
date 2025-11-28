@@ -101,7 +101,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
   , [event.photos, effectiveDeviceId]);
 
   const previousUserVideos = useMemo(() =>
-      event.photos.filter(p => p.deviceId === effectiveDeviceId && (p.type === 'video' || p.type === 'video/quicktime')).length
+      event.photos.filter(p => p.deviceId === effectiveDeviceId && p.type === 'video').length
   , [event.photos, effectiveDeviceId]);
 
   // Theme defaults
@@ -135,7 +135,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
   const ALLOWED_VIDEO_TYPES = [
       'video/mp4', 
       'video/webm', 
-      'video/quicktime',
+      'video/quicktime', 
       'video/x-m4v',
       'video/3gpp'
   ];
