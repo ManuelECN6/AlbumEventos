@@ -86,7 +86,8 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, e
   };
 
   const handleDownloadZip = async () => {
-    const photosToDownload = event.photos.filter(p => p.type !== 'video'); // Only photos to prevent crash
+    // 1. Get ALL photos (removed video filter)
+    const photosToDownload = event.photos; 
     
     if (photosToDownload.length === 0) {
         alert("No hay fotos para descargar.");
@@ -112,9 +113,11 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, e
             // Retry logic
             while (!blob && attempts < maxAttempts) {
                 try {
-                    // Fetch with omitted credentials to avoid CORS issues on public buckets
-                    // and no-store to prevent caching issues
-                    const response = await fetch(photo.url, { 
+                    // 2. Add timestamp to bypass cache and use mode: 'cors'
+                    const fetchUrl = `${photo.url}${photo.url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+                    
+                    const response = await fetch(fetchUrl, { 
+                        mode: 'cors', // Critical for the fix you applied in Cloud Shell
                         credentials: 'omit',
                         cache: 'no-store'
                     });
@@ -129,12 +132,13 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, e
 
             if (blob) {
                 // Clean filename
+                const ext = photo.type === 'video' ? 'mp4' : 'jpg';
                 const filename = photo.title && photo.title.length < 50 
-                    ? `${photo.title.replace(/[^a-z0-9]/gi, '_')}.jpg`
-                    : `foto_${photo.id}.jpg`;
+                    ? `${photo.title.replace(/[^a-z0-9]/gi, '_')}.${ext}`
+                    : `archivo_${photo.id}.${ext}`;
                 folder?.file(filename, blob);
             } else {
-                console.warn(`Failed to fetch photo ${photo.id} after ${maxAttempts} attempts.`);
+                console.warn(`Failed to fetch file ${photo.id} after ${maxAttempts} attempts.`);
                 failedCount++;
             }
             
@@ -143,13 +147,13 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, e
         }
 
         if (failedCount === photosToDownload.length) {
-            alert("No se pudieron descargar las imágenes. Por favor verifica tu conexión a internet o intenta más tarde.");
+            alert("No se pudieron descargar los archivos. Por favor verifica tu conexión a internet.");
             onClose();
             return;
         }
 
         if (failedCount > 0) {
-             alert(`Advertencia: ${failedCount} fotos no se pudieron descargar debido a errores de conexión. Se generará el ZIP con el resto.`);
+             alert(`Advertencia: ${failedCount} archivos no se pudieron descargar. Se generará el ZIP con el resto.`);
         }
 
         // Generate ZIP
@@ -166,7 +170,7 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, e
     }
   };
 
-  const hasPhotos = event.allowedMediaTypes.includes('photo');
+  const hasPhotos = event.allowedMediaTypes.includes('photo') || event.allowedMediaTypes.includes('video');
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in">
@@ -204,7 +208,7 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, e
                    {isZipping ? (
                        <div className="flex flex-col items-center">
                             <Loader2 size={48} className="animate-spin text-blue-500 mb-4" />
-                            <h3 className="text-lg font-bold text-gray-800">Comprimiendo Imágenes...</h3>
+                            <h3 className="text-lg font-bold text-gray-800">Empaquetando Recuerdos...</h3>
                             <p className="text-sm text-gray-500 mb-4">Esto puede tardar unos segundos.</p>
                             
                             <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">

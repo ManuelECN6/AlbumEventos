@@ -707,20 +707,30 @@ export default function App() {
           for (const photo of photosToDownload) {
               if (!photo.url) continue;
               try {
-                  const response = await fetch(photo.url, { credentials: 'omit', cache: 'no-store' });
+                  // Bypass Cache: Append timestamp to URL to avoid CORS cached response
+                  const fetchUrl = `${photo.url}${photo.url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+                  
+                  const response = await fetch(fetchUrl, { 
+                      mode: 'cors', // Critical for the fix you applied in Cloud Shell
+                      credentials: 'omit', 
+                      cache: 'no-store' 
+                  });
                   if (!response.ok) throw new Error("Fetch failed");
+                  
                   const blob = await response.blob();
-                  const filename = `${(photo.title || 'foto').replace(/[^a-z0-9]/gi, '_')}_${photo.id.slice(-4)}.jpg`;
+                  const ext = photo.type === 'video' ? 'mp4' : 'jpg';
+                  const filename = `${(photo.title || 'foto').replace(/[^a-z0-9]/gi, '_')}_${photo.id.slice(-4)}.${ext}`;
                   folder?.file(filename, blob);
               } catch (err) {
                   console.warn("Failed to download photo for zip:", photo.id, err);
                   failedCount++;
               }
+              // Small delay to prevent network congestion
+              await new Promise(r => setTimeout(r, 100));
           }
 
           if (failedCount === photosToDownload.length) {
-              // ALL FAILED - Show error, DO NOT download text file
-              alert("Error: No se pudieron descargar los archivos seleccionados debido a problemas de red o seguridad.");
+              alert("Error: No se pudieron descargar los archivos. Es posible que debas configurar el CORS en tu bucket de Firebase Storage.");
           } else {
               const content = await zip.generateAsync({ type: "blob" });
               saveAs(content, "seleccion_recuerdos.zip");

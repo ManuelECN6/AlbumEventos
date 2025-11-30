@@ -95,7 +95,6 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
   }, [deviceId]);
 
   // 2. Calcular límites basados en el ID del dispositivo, NO en el nombre.
-  // Esto previene que cambiar el nombre reinicie el contador.
   const previousUserPhotos = useMemo(() => 
       event.photos.filter(p => p.deviceId === effectiveDeviceId && p.type !== 'video').length
   , [event.photos, effectiveDeviceId]);
@@ -156,12 +155,14 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
     
     setError(null);
     const newFiles: File[] = [];
+    
+    // Contadores de errores
     let invalidTypeCount = 0;
     let oversizedCount = 0;
     let videoOversizedCount = 0;
     let duplicateCount = 0;
-    let photoLimitReached = false;
-    let videoLimitReached = false;
+    let photosRejectedByLimit = 0;
+    let videosRejectedByLimit = 0;
 
     // We start counting from what is currently selected in THIS session
     let currentSessionPhotoCount = selectedFiles.filter(f => f.type.startsWith('image/')).length;
@@ -171,6 +172,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
       const isVideo = file.type.startsWith('video/') || file.type === 'video/quicktime';
       const isPhoto = file.type.startsWith('image/');
       
+      // 1. Check Type
       let isAllowedType = false;
       if (isPhoto && event.allowedMediaTypes.includes('photo')) {
           isAllowedType = ALLOWED_IMAGE_TYPES.includes(file.type);
@@ -183,18 +185,21 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
         return;
       }
 
-      // Check Video Specific Limit first
-      if (isVideo && file.size > MAX_VIDEO_BYTES) {
-          videoOversizedCount++;
-          return;
+      // 2. Check Size Limits
+      if (isVideo) {
+          if (file.size > MAX_VIDEO_BYTES) {
+              videoOversizedCount++;
+              return;
+          }
+      } else {
+          // General storage limit per file for photos
+          if (file.size > MAX_SIZE_BYTES) {
+            oversizedCount++;
+            return;
+          }
       }
 
-      // Check General Storage Limit per file (fallback)
-      if (file.size > MAX_SIZE_BYTES) {
-        oversizedCount++;
-        return;
-      }
-
+      // 3. Check Duplicates
       const isDuplicate = selectedFiles.some(f => f.name === file.name && f.size === file.size) || 
                           newFiles.some(f => f.name === file.name && f.size === file.size);
       if (isDuplicate) {
@@ -202,13 +207,14 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
         return;
       }
 
+      // 4. Check Quantity Limits per Person
       if (isPhoto) {
         // CHECK LIMIT: Previous Uploads + Current Session Uploads < Max
         if ((previousUserPhotos + currentSessionPhotoCount) < event.maxPhotosPerPerson) {
           newFiles.push(file);
           currentSessionPhotoCount++;
         } else {
-          photoLimitReached = true;
+          photosRejectedByLimit++;
         }
       } else if (isVideo) {
         // CHECK LIMIT: Previous Uploads + Current Session Uploads < Max
@@ -216,21 +222,33 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
           newFiles.push(file);
           currentSessionVideoCount++;
         } else {
-          videoLimitReached = true;
+          videosRejectedByLimit++;
         }
       }
     });
 
+    // Construcción de mensajes de error inteligentes
+    let errorMessages: string[] = [];
+
     if (videoOversizedCount > 0) {
-        setError(`Se ignoraron ${videoOversizedCount} video(s) porque exceden el límite de ${MAX_VIDEO_MB}MB.`);
-    } else if (oversizedCount > 0) {
-      setError(`Se ignoraron ${oversizedCount} archivo(s) porque exceden el límite de ${MAX_SIZE_MB}MB.`);
-    } else if (invalidTypeCount > 0) {
-      setError(`Se ignoraron ${invalidTypeCount} archivo(s). Asegúrate de subir formatos válidos.`);
-    } else if (photoLimitReached) {
-      setError(`Límite de fotos alcanzado (${event.maxPhotosPerPerson}). Ya has subido ${previousUserPhotos} anteriormente.`);
-    } else if (videoLimitReached) {
-      setError(`Límite de videos alcanzado (${event.maxVideosPerPerson}). Ya has subido ${previousUserVideos} anteriormente.`);
+        errorMessages.push(`• ${videoOversizedCount} video(s) exceden el límite de ${MAX_VIDEO_MB}MB.`);
+    }
+    if (oversizedCount > 0) {
+        errorMessages.push(`• ${oversizedCount} archivo(s) exceden el límite de ${MAX_SIZE_MB}MB.`);
+    }
+    if (invalidTypeCount > 0) {
+        errorMessages.push(`• ${invalidTypeCount} archivo(s) tienen un formato no válido.`);
+    }
+    if (photosRejectedByLimit > 0) {
+        const total = previousUserPhotos + currentSessionPhotoCount; // Should equal limit
+        errorMessages.push(`• Se omitieron ${photosRejectedByLimit} fotos. Alcanzarías tu límite de ${event.maxPhotosPerPerson} (tienes ${previousUserPhotos} previas).`);
+    }
+    if (videosRejectedByLimit > 0) {
+        errorMessages.push(`• Se omitieron ${videosRejectedByLimit} videos. Alcanzarías tu límite de ${event.maxVideosPerPerson} (tienes ${previousUserVideos} previos).`);
+    }
+
+    if (errorMessages.length > 0) {
+        setError(errorMessages.join(' '));
     }
 
     if (newFiles.length > 0) {
@@ -286,15 +304,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
     setIsUploading(true);
     
     try {
-        // We simulate a tiny pause just to let the UI render the loading state
-        // then await the actual processing in App.tsx via onUpload
         await new Promise(resolve => setTimeout(resolve, 100)); 
-        
         await onUpload(selectedFiles, authorName);
-        
         setIsUploading(false);
         setIsSuccess(true);
-
         setTimeout(() => {
             handleClose();
         }, 3000);
@@ -409,42 +422,48 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
 
                     {/* Rules & Limits */}
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
-                         <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Límites de subida (Por Dispositivo)</h4>
-                         <ul className="space-y-2 text-sm text-gray-600">
+                         <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2">
+                             <Info size={12} /> Límites de subida
+                         </h4>
+                         <ul className="space-y-3 text-sm text-gray-600">
                              {event.allowedMediaTypes.includes('photo') && (
-                                 <li className="flex justify-between items-center">
-                                     <span>Fotos máx:</span>
-                                     <div className="flex items-center gap-1">
-                                         <span className={totalPhotos >= event.maxPhotosPerPerson ? "text-red-500 font-bold" : "font-medium"}>
+                                 <li className="flex justify-between items-center bg-white p-2 rounded border border-gray-100">
+                                     <span className="flex items-center gap-2 text-xs font-medium"><ImageIcon size={14} /> Fotos</span>
+                                     <div className="flex items-center gap-2">
+                                         <span className={`font-bold ${totalPhotos >= event.maxPhotosPerPerson ? "text-red-500" : "text-green-600"}`}>
                                              {totalPhotos} / {event.maxPhotosPerPerson}
                                          </span>
-                                         {previousUserPhotos > 0 && <span className="text-[10px] text-gray-400">({previousUserPhotos} prev)</span>}
                                      </div>
                                  </li>
                              )}
                              {event.allowedMediaTypes.includes('video') && (
-                                 <li className="flex justify-between items-center">
-                                     <span>Videos máx:</span>
-                                     <div className="flex items-center gap-1">
-                                         <span className={totalVideos >= event.maxVideosPerPerson ? "text-red-500 font-bold" : "font-medium"}>
+                                 <li className="flex justify-between items-center bg-white p-2 rounded border border-gray-100">
+                                     <span className="flex items-center gap-2 text-xs font-medium"><Video size={14} /> Videos</span>
+                                     <div className="flex items-center gap-2">
+                                         <span className={`font-bold ${totalVideos >= event.maxVideosPerPerson ? "text-red-500" : "text-green-600"}`}>
                                              {totalVideos} / {event.maxVideosPerPerson}
                                          </span>
-                                         {previousUserVideos > 0 && <span className="text-[10px] text-gray-400">({previousUserVideos} prev)</span>}
                                      </div>
                                  </li>
                              )}
-                             <li className="flex justify-between">
-                                 <span>Tamaño máx:</span>
-                                 <span>{MAX_SIZE_MB} MB/archivo</span>
-                             </li>
+                             <div className="pt-2 border-t border-gray-200">
+                                 <li className="flex justify-between text-xs text-gray-500">
+                                     <span>Max. Video:</span>
+                                     <span className="font-bold">{MAX_VIDEO_MB} MB</span>
+                                 </li>
+                                 <li className="flex justify-between text-xs text-gray-500 mt-1">
+                                     <span>Max. Foto:</span>
+                                     <span className="font-bold">{MAX_SIZE_MB} MB</span>
+                                 </li>
+                             </div>
                          </ul>
                     </div>
 
                     {/* Error Message */}
                     {error && (
-                        <div className="p-3 bg-red-50 border border-red-100 rounded-md flex items-start gap-2 text-sm text-red-600 animate-pulse">
+                        <div className="p-3 bg-red-50 border border-red-100 rounded-md flex items-start gap-2 text-xs md:text-sm text-red-600 animate-pulse">
                         <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                        <span>{error}</span>
+                        <span className="leading-snug whitespace-pre-wrap">{error}</span>
                         </div>
                     )}
                     </div>
@@ -487,7 +506,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
                             {isDragging ? 'Suelta los archivos aquí' : 'Haz clic o arrastra tus archivos aquí'}
                         </h3>
                         <p className="text-xs text-gray-500 mb-4">
-                            {acceptedStr} permitidos (Max {MAX_SIZE_MB}MB)
+                            {acceptedStr} permitidos
                         </p>
                     </div>
 
