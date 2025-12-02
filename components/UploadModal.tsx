@@ -586,3 +586,4 @@ const CameraIcon = ({ className, size }: { className?: string, size?: number }) 
     <circle cx="12" cy="13" r="3"/>
   </svg>
 );
+
