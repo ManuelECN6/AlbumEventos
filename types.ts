@@ -91,6 +91,7 @@ export interface EventConfig {
   photos: Photo[];
   categories: Category[];
   allowUploads: boolean;
+  allowDownloads?: boolean; // Nuevo campo: Permite descargas a invitados
   allowedMediaTypes: ('photo' | 'video')[];
   storageLimit: number;
   maxPhotosPerPerson: number;

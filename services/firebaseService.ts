@@ -251,13 +251,13 @@ export const processAndUploadPhoto = async (
       
       try {
           // A. Generar IMAGEN PRINCIPAL (Full HD - 1920px, 0.8 calidad)
-          // Reduce 5MB -> ~300KB
+          // Reduce 5MB -> ~300KB. Suficiente para pantalla completa.
           const mainImage = await resizeImage(file, 1920, 0.8);
           const mainPath = `eventos/${eventId}/${userIdFolder}/${uniqueFileName}`;
           mainDownloadUrl = await uploadFileToFirebase(mainImage, mainPath);
 
           // B. Generar THUMBNAIL (Miniatura - 500px, 0.6 calidad)
-          // Crea versión de ~30KB para la cuadrícula
+          // Crea versión de ~20-30KB para la cuadrícula. Ahorro masivo de ancho de banda.
           const thumbImage = await resizeImage(file, 500, 0.6);
           const thumbPath = `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${uniqueFileName}`;
           thumbDownloadUrl = await uploadFileToFirebase(thumbImage, thumbPath);

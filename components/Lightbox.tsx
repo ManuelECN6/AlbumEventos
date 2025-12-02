@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { X, ChevronLeft, ChevronRight, Heart, Flag, User, Clock, Download } from 'lucide-react';
 import { Photo } from '../types';
@@ -15,6 +14,7 @@ interface LightboxProps {
   onReport: (id: string) => void;
   allPhotos?: Photo[];
   onSelect?: (index: number) => void;
+  allowDownloads?: boolean; // Default to false
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({ 
@@ -28,7 +28,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
   onLike,
   onReport,
   allPhotos = [],
-  onSelect
+  onSelect,
+  allowDownloads = false 
 }) => {
   const [showReportConfirm, setShowReportConfirm] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -225,15 +226,17 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 {photo.likedByMe ? "Te gusta" : "Me gusta"} ({photo.likes})
               </button>
               
-              {/* Download Button (Enhanced) */}
-              <button 
-                onClick={handleDownload}
-                disabled={isDownloading}
-                className="flex items-center justify-center gap-2 px-6 py-2 rounded-md border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 font-medium transition-colors text-sm disabled:opacity-50"
-              >
-                <Download size={16} />
-                {isDownloading ? 'Bajando...' : 'Descargar'}
-              </button>
+              {/* Download Button (Enhanced) - CONDITIONAL RENDERING */}
+              {allowDownloads && (
+                  <button 
+                    onClick={handleDownload}
+                    disabled={isDownloading}
+                    className="flex items-center justify-center gap-2 px-6 py-2 rounded-md border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 font-medium transition-colors text-sm disabled:opacity-50"
+                  >
+                    <Download size={16} />
+                    {isDownloading ? 'Bajando...' : 'Descargar'}
+                  </button>
+              )}
               
               {/* Report Button */}
               <button 

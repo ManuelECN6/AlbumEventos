@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Lightbox } from './components/Lightbox';
 import { UploadModal } from './components/UploadModal';
@@ -41,6 +40,7 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     photos: [],
     categories: [{ id: 'c1', name: 'General', color: '#3b82f6' }],
     allowUploads: true,
+    allowDownloads: false, // Por defecto desactivado
     allowedMediaTypes: ['photo'],
     storageLimit: 100,
     maxPhotosPerPerson: 25,
@@ -1091,6 +1091,7 @@ export default function App() {
         onReport={handleReport}
         allPhotos={visiblePhotos}
         onSelect={setSelectedPhotoIndex}
+        allowDownloads={activeEvent.allowDownloads ?? false}
       />
 
       <UploadModal 
