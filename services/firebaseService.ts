@@ -1,5 +1,3 @@
-
-
 import { db, storage } from '../firebaseConfig';
 import { 
   collection, 
@@ -13,7 +11,12 @@ import {
   query,
   orderBy,
   limit,
-  where
+  where,
+  writeBatch,
+  increment,
+  arrayRemove,
+  arrayUnion,
+  runTransaction
 } from 'firebase/firestore';
 import { 
   ref, 
@@ -25,72 +28,119 @@ import { EventConfig, Photo } from '../types';
 
 const EVENTS_COLLECTION = 'events';
 
+// --- NUEVO: Función auxiliar para detectar si una foto es Legacy (está en el array principal) o Moderna (Subcolección)
+const getPhotoLocation = async (eventId: string, photoId: string): Promise<'subcollection' | 'legacy'> => {
+    const photoRef = doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId);
+    const snap = await getDoc(photoRef);
+    return snap.exists() ? 'subcollection' : 'legacy';
+};
+
 /**
  * ESCUCHAR EVENTOS EN TIEMPO REAL (ADMIN)
- * Suscribe la app a TODOS los eventos (Costoso en lecturas, usar solo para Admin).
  */
 export const subscribeToEvents = (callback: (events: EventConfig[]) => void) => {
   const q = query(collection(db, EVENTS_COLLECTION), orderBy('date', 'desc'));
   
   return onSnapshot(q, (snapshot) => {
-    const events = snapshot.docs.map(doc => doc.data() as EventConfig);
+    // Nota: En la lista general de admin NO descargamos las subcolecciones de fotos 
+    // para mantenerlo ligero. El admin debe entrar al detalle para ver fotos.
+    const events = snapshot.docs.map(doc => {
+        const data = doc.data() as EventConfig;
+        // Aseguramos que photos sea un array aunque esté vacío (para evitar crash)
+        return { ...data, photos: data.photos || [] };
+    });
     callback(events);
   });
 };
 
 /**
- * ESCUCHAR UN SOLO EVENTO (VISITANTE) - OPTIMIZADO
- * Ahorra costos leyendo solo 1 documento en lugar de toda la colección.
- * Soporta búsqueda por ID o por publicToken.
+ * ESCUCHAR UN SOLO EVENTO + SUS FOTOS (VISITANTE/DETALLE) - ARQUITECTURA HÍBRIDA
+ * Escucha el documento principal Y la subcolección de fotos, fusionándolos.
  */
 export const subscribeToVisitorEvent = (identifier: string | null, callback: (events: EventConfig[]) => void) => {
-  // 1. Si no hay identificador, traer solo el ÚLTIMO evento (Limit 1)
+  // 1. Resolver el ID del documento
+  let docQuery: any;
+  
   if (!identifier) {
-    const q = query(collection(db, EVENTS_COLLECTION), orderBy('date', 'desc'), limit(1));
-    return onSnapshot(q, (snapshot) => {
-      const events = snapshot.docs.map(doc => doc.data() as EventConfig);
-      callback(events);
-    });
-  }
-
-  // 2. Determinar si es un ID o un Token
-  // Los IDs en esta app empiezan con 'event-' pero NO 'evento-' (que son tokens)
-  // Esta heurística ahorra una lectura extra de "búsqueda".
-  const isLikelyId = identifier.startsWith('event-') && !identifier.startsWith('evento-');
-
-  if (isLikelyId) {
-    // Suscripción directa al documento (Más barato y rápido)
-    const docRef = doc(db, EVENTS_COLLECTION, identifier);
-    return onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        callback([docSnap.data() as EventConfig]);
-      } else {
-        // Si no existe por ID, intentamos por Token como fallback
-        // (Por si acaso alguien nombró manualmente un token como un id)
-        const qToken = query(collection(db, EVENTS_COLLECTION), where('publicToken', '==', identifier), limit(1));
-        return onSnapshot(qToken, (qSnap) => {
-           callback(qSnap.docs.map(d => d.data() as EventConfig));
-        });
-      }
-    });
+    docQuery = query(collection(db, EVENTS_COLLECTION), orderBy('date', 'desc'), limit(1));
+  } else if (identifier.startsWith('event-') && !identifier.startsWith('evento-')) {
+    docQuery = doc(db, EVENTS_COLLECTION, identifier);
   } else {
-    // Búsqueda por Token Público
-    const qToken = query(collection(db, EVENTS_COLLECTION), where('publicToken', '==', identifier), limit(1));
-    return onSnapshot(qToken, (snapshot) => {
-      callback(snapshot.docs.map(doc => doc.data() as EventConfig));
-    });
+    docQuery = query(collection(db, EVENTS_COLLECTION), where('publicToken', '==', identifier), limit(1));
   }
+
+  // Helper para manejar la suscripción a la subcolección
+  let photoUnsubscribe: (() => void) | null = null;
+
+  const handleEventDoc = (eventData: EventConfig, eventId: string) => {
+      // Fotos Legacy (que viven dentro del documento principal)
+      const legacyPhotos = eventData.photos || [];
+
+      // Suscribirse a la SUBCOLECCIÓN de fotos (Nuevas)
+      const photosColRef = collection(db, EVENTS_COLLECTION, eventId, 'photos');
+      // Ordenamos por fecha de creación si es posible
+      const qPhotos = query(photosColRef); // Puedes añadir orderBy('createdAt', 'desc') si indexas
+
+      if (photoUnsubscribe) photoUnsubscribe();
+
+      photoUnsubscribe = onSnapshot(qPhotos, (photoSnaps) => {
+          const subcollectionPhotos = photoSnaps.docs.map(p => p.data() as Photo);
+          
+          // FUSIÓN: Legacy + Subcolección
+          // Usamos un Map para evitar duplicados si migramos fotos de un lado a otro
+          const photoMap = new Map<string, Photo>();
+          
+          legacyPhotos.forEach(p => photoMap.set(p.id, p));
+          subcollectionPhotos.forEach(p => photoMap.set(p.id, p));
+
+          const allPhotos = Array.from(photoMap.values()).sort((a, b) => {
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          });
+
+          callback([{ ...eventData, id: eventId, photos: allPhotos }]);
+      });
+  };
+
+  // Suscripción al Documento Principal
+  const mainUnsubscribe = onSnapshot(docQuery, (snapshot: any) => {
+      // Manejo si es QuerySnapshot o DocumentSnapshot
+      let docSnap = null;
+      if (snapshot.docs) {
+          if (snapshot.empty) { callback([]); return; }
+          docSnap = snapshot.docs[0];
+      } else {
+          if (!snapshot.exists()) { callback([]); return; }
+          docSnap = snapshot;
+      }
+
+      const eventData = docSnap.data() as EventConfig;
+      handleEventDoc(eventData, docSnap.id);
+  });
+
+  // Retornar función de limpieza que cierre ambas suscripciones
+  return () => {
+      mainUnsubscribe();
+      if (photoUnsubscribe) photoUnsubscribe();
+  };
 };
 
 /**
- * GUARDAR O ACTUALIZAR UN EVENTO
- * Guarda toda la configuración del evento (incluyendo array de fotos) en Firestore.
+ * GUARDAR EVENTO (SIN FOTOS ARRAY)
+ * Guarda la configuración. Si se pasa un array de fotos, se ELIMINA antes de guardar
+ * para proteger el límite de 1MB. Las fotos deben ir por subcolección.
  */
 export const saveEventToFirebase = async (event: EventConfig) => {
   try {
     const eventRef = doc(db, EVENTS_COLLECTION, event.id);
-    // Convertimos a objeto plano por si acaso hay referencias raras, aunque Firestore maneja JSON bien
-    await setDoc(eventRef, event, { merge: true }); 
+    
+    // CLAVE: Desestructurar para separar photos del resto de la data
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { photos, ...eventDataWithoutPhotos } = event;
+    
+    // Guardamos solo la metadata del evento.
+    // merge: true preserva campos que no estemos enviando (como photos legacy si existieran, 
+    // aunque idealmente no deberíamos tocarlas aquí).
+    await setDoc(eventRef, eventDataWithoutPhotos, { merge: true }); 
   } catch (error) {
     console.error("Error guardando evento en Firebase:", error);
     throw error;
@@ -98,179 +148,103 @@ export const saveEventToFirebase = async (event: EventConfig) => {
 };
 
 /**
- * ACTUALIZAR UN CAMPO ESPECÍFICO DE UN EVENTO
- * Usa updateDoc para una actualización atómica y eficiente.
+ * ACTUALIZACIÓN ATÓMICA DE CAMPOS
  */
 export const updateEventFieldInFirebase = async (eventId: string, fieldPath: string, value: any) => {
   try {
     const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+    
+    // Si intentan actualizar 'photos' directamente, interceptamos para evitar error de tamaño
+    if (fieldPath === 'photos') {
+        console.warn("Intentando actualizar 'photos' array directamente. Esto solo afecta a fotos legacy.");
+        // Permitimos update si es legacy, pero lo ideal es usar las funciones atómicas de abajo
+    }
+
     await updateDoc(eventRef, {
       [fieldPath]: value
     });
   } catch (error) {
-    console.error(`Error actualizando el campo ${fieldPath} en Firebase:`, error);
+    console.error(`Error actualizando el campo ${fieldPath}:`, error);
     throw error;
   }
 };
 
-
-/**
- * ELIMINAR EVENTO
- */
 export const deleteEventFromFirebase = async (eventId: string) => {
   try {
     await deleteDoc(doc(db, EVENTS_COLLECTION, eventId));
+    // Nota: Firestore no borra subcolecciones automáticamente. 
+    // Para borrar las fotos reales se requeriría una Cloud Function o borrar recursivamente desde cliente (costoso).
   } catch (error) {
     console.error("Error eliminando evento:", error);
     throw error;
   }
 };
 
-/**
- * ELIMINAR ARCHIVO DE STORAGE
- * Elimina el archivo físico usando su URL de descarga.
- */
 export const deleteFileFromFirebase = async (fileUrl: string) => {
   try {
-    if (!fileUrl) return;
-
-    // 1. VALIDACIÓN DE URL
-    if (!fileUrl.includes('firebasestorage.googleapis.com')) {
-      return; 
-    }
-
-    // 2. Intentamos crear la referencia y borrar
-    try {
-        const fileRef = ref(storage, fileUrl);
-        await deleteObject(fileRef);
-    } catch (innerError: any) {
-        if (innerError.code === 'storage/object-not-found') {
-            return;
-        }
-        if (innerError.code === 'storage/invalid-argument') {
-            console.warn(`URL inválida para Storage, omitiendo borrado físico: ${fileUrl}`);
-            return;
-        }
-        if (innerError.code === 'storage/unauthorized') {
-            throw innerError;
-        }
-        console.error(`Error no crítico borrando archivo ${fileUrl}:`, innerError);
-    }
-
+    if (!fileUrl || !fileUrl.includes('firebasestorage.googleapis.com')) return;
+    const fileRef = ref(storage, fileUrl);
+    await deleteObject(fileRef);
   } catch (error: any) {
-    if (error.code === 'storage/unauthorized') {
-      throw error; 
+    if (error.code !== 'storage/object-not-found') {
+        console.error("Error borrando archivo:", error);
     }
-    console.error(`Error general en deleteFileFromFirebase:`, error);
   }
 };
 
-/**
- * SUBIR ARCHIVO A STORAGE
- * Sube la foto/video y devuelve la URL pública de descarga.
- */
 export const uploadFileToFirebase = async (file: File, path: string): Promise<string> => {
   try {
-    console.log(`[FirebaseService] Subiendo: ${path} (${(file.size/1024).toFixed(2)} KB)`);
     const storageRef = ref(storage, path);
-    
-    // Configuración de Metadata para Caché (Ahorro de Bandwidth/Costos)
     const metadata = {
-        // public: puede ser cacheado por cualquiera (CDN, browser)
-        // max-age=31536000: 1 año en segundos
-        // immutable: el contenido no cambiará, no es necesario revalidar
         cacheControl: 'public, max-age=31536000, immutable',
         contentType: file.type,
     };
-
     const snapshot = await uploadBytes(storageRef, file, metadata);
-    const downloadURL = await getDownloadURL(snapshot.ref);
-    return downloadURL;
+    return await getDownloadURL(snapshot.ref);
   } catch (error) {
-    console.error("Error crítico subiendo archivo a Storage:", error);
+    console.error("Error subiendo archivo:", error);
     throw error;
   }
 };
 
-/**
- * REDIMENSIONAR IMAGEN (Helper Flex)
- * Permite crear versiones de diferentes tamaños y calidades.
- * maxWidth: Ancho máximo en px.
- * quality: Calidad WebP (0.0 - 1.0).
- */
 const resizeImage = (file: File, maxWidth: number, quality: number): Promise<File> => {
-    return new Promise((resolve, reject) => {
-        // Si no es imagen (ej: video), devolver original
+    return new Promise((resolve) => {
         if (!file.type.startsWith('image/')) {
             resolve(file);
             return;
         }
-
         const img = new Image();
         const url = URL.createObjectURL(file);
-        
         img.onload = () => {
-            let width = img.width;
-            let height = img.height;
-
-            // Calcular nuevas dimensiones manteniendo aspecto
+            let { width, height } = img;
             if (width > height) {
-                if (width > maxWidth) {
-                    height *= maxWidth / width;
-                    width = maxWidth;
-                }
+                if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; }
             } else {
-                if (height > maxWidth) {
-                    width *= maxWidth / height;
-                    height = maxWidth;
-                }
+                if (height > maxWidth) { width *= maxWidth / height; height = maxWidth; }
             }
-
             const canvas = document.createElement('canvas');
             canvas.width = width;
             canvas.height = height;
-            
             const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                URL.revokeObjectURL(url);
-                resolve(file); // Fallback a original si falla canvas
-                return;
-            }
-
-            // Dibujar imagen redimensionada
+            if (!ctx) { resolve(file); return; }
             ctx.drawImage(img, 0, 0, width, height);
-            
-            // CONVERSIÓN A WEBP
             canvas.toBlob((blob) => {
                 URL.revokeObjectURL(url);
                 if (blob) {
-                    // Crear nuevo archivo comprimido con extensión .webp
                     const newName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
-                    const compressedFile = new File([blob], newName, {
-                        type: 'image/webp',
-                        lastModified: Date.now(),
-                    });
-                    resolve(compressedFile);
+                    resolve(new File([blob], newName, { type: 'image/webp', lastModified: Date.now() }));
                 } else {
-                    resolve(file); // Fallback
+                    resolve(file);
                 }
             }, 'image/webp', quality);
         };
-
-        img.onerror = () => {
-            URL.revokeObjectURL(url);
-            resolve(file); // Fallback
-        };
-
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
         img.src = url;
     });
 };
 
 /**
- * PROCESAR Y SUBIR FOTOS (OPTIMIZADO)
- * Sube DOS versiones de cada foto:
- * 1. Principal (HD) -> Para Lightbox y Descarga (WebP).
- * 2. Thumbnail (SD) -> Para la Galería (WebP).
+ * PROCESAR Y SUBIR FOTO -> AHORA GUARDA EN SUBCOLECCIÓN
  */
 export const processAndUploadPhoto = async (
   file: File, 
@@ -279,99 +253,184 @@ export const processAndUploadPhoto = async (
   authorColor: string,
   deviceId: string
 ): Promise<Photo> => {
-  // 1. VALIDACIÓN
-  if (!eventId) throw new Error("ID de evento requerido para subir archivos.");
-
+  if (!eventId) throw new Error("ID de evento requerido.");
+  
+  // 1. Validaciones
   const isVideo = file.type.startsWith('video/') || file.type === 'video/quicktime';
-
-  // --- VALIDACIÓN DE TAMAÑO DE VIDEO (Nivel Básico) ---
-  if (isVideo) {
-      const MAX_VIDEO_SIZE_MB = 100; // Límite estricto de seguridad
-      if (file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
-          throw new Error(`El video es demasiado grande (${(file.size / 1024 / 1024).toFixed(1)}MB). El límite de seguridad es ${MAX_VIDEO_SIZE_MB}MB.`);
-      }
+  if (isVideo && file.size > 100 * 1024 * 1024) { // 100MB Hard limit
+      throw new Error("Video excede 100MB.");
   }
 
   const timestamp = Date.now();
-  
-  // Usar deviceId o fallback a 'anonimo'
-  const userIdFolder = (deviceId && typeof deviceId === 'string' && deviceId.trim() !== '') 
-    ? deviceId 
-    : 'anonimo';
+  const userIdFolder = deviceId?.trim() ? deviceId : 'anonimo';
+  const sanitizedName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+  const photoId = `photo-${timestamp}`;
 
-  // Nombres base
-  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+  // 2. Subida a Storage (Caché + WebP)
+  let mainUrl = '', thumbUrl = '';
   
-  // Nombre base para WebP (si es foto)
-  const baseNameNoExt = sanitizedFileName.replace(/\.[^/.]+$/, "");
-  const webpFileName = `${timestamp}_${baseNameNoExt}.webp`;
-  
-  // Nombre original para video
-  const uniqueVideoName = `${timestamp}_${sanitizedFileName}`;
-  
-  let mainDownloadUrl = '';
-  let thumbDownloadUrl = '';
-
   if (isVideo) {
-      // Para videos, subimos el original (validado por tamaño en UI)
-      const path = `eventos/${eventId}/${userIdFolder}/${uniqueVideoName}`;
-      mainDownloadUrl = await uploadFileToFirebase(file, path);
-      // Usamos el mismo video como thumbnail (el navegador intentará cargar el primer frame)
-      thumbDownloadUrl = mainDownloadUrl; 
+      const path = `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedName}`;
+      mainUrl = await uploadFileToFirebase(file, path);
+      thumbUrl = mainUrl; 
   } else {
-      // --- OPTIMIZACIÓN DE IMÁGENES (COST SAVING: WEBP) ---
-      
       try {
-          // A. Generar IMAGEN PRINCIPAL (Full HD - 1920px, 0.8 calidad WebP)
-          // Reduce drásticamente el peso manteniendo calidad visual
-          const mainImage = await resizeImage(file, 1920, 0.8);
-          const mainPath = `eventos/${eventId}/${userIdFolder}/${webpFileName}`;
-          mainDownloadUrl = await uploadFileToFirebase(mainImage, mainPath);
+          const webpName = sanitizedName.replace(/\.[^/.]+$/, "") + ".webp";
+          const mainImg = await resizeImage(file, 1920, 0.85); // WebP Calidad Alta
+          mainUrl = await uploadFileToFirebase(mainImg, `eventos/${eventId}/${userIdFolder}/${timestamp}_${webpName}`);
 
-          // B. Generar THUMBNAIL (Miniatura - 500px, 0.6 calidad WebP)
-          // Crea versión muy ligera para la cuadrícula
-          const thumbImage = await resizeImage(file, 500, 0.6);
-          const thumbPath = `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${webpFileName}`;
-          thumbDownloadUrl = await uploadFileToFirebase(thumbImage, thumbPath);
-
+          const thumbImg = await resizeImage(file, 500, 0.6); // WebP Miniatura
+          thumbUrl = await uploadFileToFirebase(thumbImg, `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${timestamp}_${webpName}`);
       } catch (e) {
-          console.warn("Falló optimización de imagen, subiendo original", e);
-          // Fallback seguro: subir original si falla el procesamiento
-          const path = `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedFileName}`;
-          mainDownloadUrl = await uploadFileToFirebase(file, path);
-          thumbDownloadUrl = mainDownloadUrl;
+          console.warn("Fallback JPEG", e);
+          mainUrl = await uploadFileToFirebase(file, `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedName}`);
+          thumbUrl = mainUrl;
       }
   }
 
-  // 5. CREACIÓN DE OBJETO PHOTO
+  // 3. Crear Objeto Foto
   const newPhoto: Photo = {
-    id: `photo-${timestamp}`,
-    url: mainDownloadUrl,      // Imagen optimizada (WebP)
-    thumbnail: thumbDownloadUrl, // Miniatura ligera (WebP)
-    width: 800, // Valor estimado
-    height: 600,
+    id: photoId,
+    url: mainUrl,
+    thumbnail: thumbUrl,
+    width: 0, height: 0,
     title: file.name,
-    category: 'General', 
+    category: 'General',
     likes: 0,
     likedByMe: false,
     isArchived: false,
     isDeleted: false,
     createdAt: new Date().toISOString(),
-    author: {
-      name: authorName,
-      initials: authorName.substring(0, 2).toUpperCase(),
-      avatarColor: authorColor
-    },
+    author: { name: authorName, initials: authorName.substring(0, 2).toUpperCase(), avatarColor: authorColor },
     type: isVideo ? 'video' : 'photo',
     deviceId: deviceId
   };
 
+  // 4. GUARDAR EN SUBCOLECCIÓN (La parte clave de la escalabilidad)
+  // events/{eventId}/photos/{photoId}
+  await setDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId), newPhoto);
+
   return newPhoto;
 };
 
+// --- FUNCIONES ATÓMICAS DE GESTIÓN (HÍBRIDAS) ---
+
+export const togglePhotoLike = async (eventId: string, photoId: string, incrementVal: boolean) => {
+    const loc = await getPhotoLocation(eventId, photoId);
+    
+    if (loc === 'subcollection') {
+        const ref = doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId);
+        await updateDoc(ref, { likes: increment(incrementVal ? 1 : -1) });
+    } else {
+        // LEGACY: Transaction para encontrar la foto en el array y actualizarla
+        const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+        await runTransaction(db, async (transaction) => {
+            const eventDoc = await transaction.get(eventRef);
+            if (!eventDoc.exists()) return;
+            const data = eventDoc.data() as EventConfig;
+            const photos = data.photos || [];
+            const idx = photos.findIndex(p => p.id === photoId);
+            if (idx >= 0) {
+                photos[idx].likes = Math.max(0, photos[idx].likes + (incrementVal ? 1 : -1));
+                transaction.update(eventRef, { photos });
+            }
+        });
+    }
+};
+
+export const updatePhotoField = async (eventId: string, photoId: string, field: string, value: any) => {
+    const loc = await getPhotoLocation(eventId, photoId);
+    
+    if (loc === 'subcollection') {
+        await updateDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId), { [field]: value });
+    } else {
+        // LEGACY
+        const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+        await runTransaction(db, async (transaction) => {
+            const eventDoc = await transaction.get(eventRef);
+            if (!eventDoc.exists()) return;
+            const photos = (eventDoc.data() as EventConfig).photos || [];
+            const idx = photos.findIndex(p => p.id === photoId);
+            if (idx >= 0) {
+                photos[idx] = { ...photos[idx], [field]: value };
+                transaction.update(eventRef, { photos });
+            }
+        });
+    }
+};
+
 /**
- * OBTENER UN EVENTO ESPECÍFICO
+ * Operaciones por Lote (Bulk) para AdminPanel
+ * Soporta mezcla de fotos legacy y modernas.
  */
+export const batchUpdatePhotos = async (eventId: string, photoIds: string[], updates: Partial<Photo>) => {
+    // Para eficiencia, primero intentamos batch en subcolección.
+    // Las que fallen (no existan), las tratamos como legacy.
+    const batch = writeBatch(db);
+    const legacyIds: string[] = [];
+
+    // Chequeo paralelo de ubicación
+    await Promise.all(photoIds.map(async (id) => {
+        const ref = doc(db, EVENTS_COLLECTION, eventId, 'photos', id);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+            batch.update(ref, updates);
+        } else {
+            legacyIds.push(id);
+        }
+    }));
+
+    // Ejecutar batch de modernas
+    await batch.commit();
+
+    // Ejecutar legacy (si hay)
+    if (legacyIds.length > 0) {
+        const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+        await runTransaction(db, async (transaction) => {
+            const eventDoc = await transaction.get(eventRef);
+            if (!eventDoc.exists()) return;
+            
+            const photos = (eventDoc.data() as EventConfig).photos || [];
+            let changed = false;
+            
+            legacyIds.forEach(id => {
+                const idx = photos.findIndex(p => p.id === id);
+                if (idx >= 0) {
+                    photos[idx] = { ...photos[idx], ...updates };
+                    changed = true;
+                }
+            });
+
+            if (changed) transaction.update(eventRef, { photos });
+        });
+    }
+};
+
+// Wrappers semánticos
+export const softDeletePhoto = (eventId: string, photoId: string) => updatePhotoField(eventId, photoId, 'isDeleted', true);
+export const restorePhoto = (eventId: string, photoId: string) => updatePhotoField(eventId, photoId, 'isDeleted', false);
+export const archivePhoto = (eventId: string, photoId: string, archive: boolean) => updatePhotoField(eventId, photoId, 'isArchived', archive);
+
+export const permanentDeletePhoto = async (eventId: string, photoId: string, photoUrl: string) => {
+    // 1. Borrar archivo físico
+    await deleteFileFromFirebase(photoUrl);
+    
+    // 2. Borrar documento (Híbrido)
+    const loc = await getPhotoLocation(eventId, photoId);
+    if (loc === 'subcollection') {
+        await deleteDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId));
+    } else {
+        const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+        await runTransaction(db, async (t) => {
+            const docSnap = await t.get(eventRef);
+            if (!docSnap.exists()) return;
+            const photos = (docSnap.data() as EventConfig).photos || [];
+            const newPhotos = photos.filter(p => p.id !== photoId);
+            t.update(eventRef, { photos: newPhotos });
+        });
+    }
+};
+
 export const getEvent = async (eventId: string): Promise<EventConfig | null> => {
   try {
     const eventRef = doc(db, EVENTS_COLLECTION, eventId);

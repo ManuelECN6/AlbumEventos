@@ -1,12 +1,25 @@
-
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Lightbox } from './components/Lightbox';
 import { UploadModal } from './components/UploadModal';
 import { DownloadModal } from './components/DownloadModal';
 import { AdminPanel } from './components/AdminPanel';
 import { Photo, EventConfig, Participant } from './types';
-import { subscribeToEvents, subscribeToVisitorEvent, saveEventToFirebase, deleteEventFromFirebase, processAndUploadPhoto, deleteFileFromFirebase, getEvent, updateEventFieldInFirebase } from './services/firebaseService';
+import { 
+    subscribeToEvents, 
+    subscribeToVisitorEvent, 
+    saveEventToFirebase, 
+    deleteEventFromFirebase, 
+    processAndUploadPhoto, 
+    deleteFileFromFirebase, 
+    getEvent, 
+    updateEventFieldInFirebase,
+    togglePhotoLike,
+    softDeletePhoto,
+    restorePhoto,
+    permanentDeletePhoto,
+    archivePhoto,
+    batchUpdatePhotos
+} from './services/firebaseService';
 import { 
   Heart, 
   Camera, 
@@ -42,7 +55,7 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     photos: [],
     categories: [{ id: 'c1', name: 'General', color: '#3b82f6' }],
     allowUploads: true,
-    allowDownloads: false, // Por defecto desactivado
+    allowDownloads: false, 
     allowedMediaTypes: ['photo'],
     storageLimit: 100,
     maxPhotosPerPerson: 25,
@@ -81,82 +94,62 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
 // --- COMPONENTE PRINCIPAL ---
 
 export default function App() {
-  // Estado inicial vacío, se llenará con Firebase
   const [events, setEvents] = useState<EventConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false); // Estado global de carga para operaciones
+  const [isProcessing, setIsProcessing] = useState(false);
   const [deviceId, setDeviceId] = useState<string>('');
 
-  // Estados de UI Admin
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
-  // Estado local para los Likes (Persistencia por dispositivo)
   const [likedPhotoIds, setLikedPhotoIds] = useState<Set<string>>(new Set());
   
-  // PAGINACIÓN
   const PHOTOS_PER_PAGE = 12;
   const [visiblePhotosCount, setVisiblePhotosCount] = useState(PHOTOS_PER_PAGE);
 
-  // DOWNLOAD SELECTION MODE STATES
   const [isDownloadSelectionMode, setIsDownloadSelectionMode] = useState(false);
   const [downloadSelection, setDownloadSelection] = useState<Set<string>>(new Set());
   const [isZippingSelected, setIsZippingSelected] = useState(false);
 
-  // --- IDENTIFICACIÓN DE DISPOSITIVO ---
   useEffect(() => {
-    // Intentar obtener ID del localStorage
     let storedId = localStorage.getItem('album_device_id');
     if (!storedId) {
-        // Si no existe, crear uno nuevo (UUID simple)
         storedId = 'device-' + Date.now() + '-' + Math.random().toString(36).substring(2, 15);
         localStorage.setItem('album_device_id', storedId);
     }
     setDeviceId(storedId);
   }, []);
 
-  // --- CONEXIÓN CON FIREBASE (OPTIMIZADA) ---
   useEffect(() => {
       let unsubscribe: () => void;
 
-      // Detectar URL param
       const params = new URLSearchParams(window.location.search);
       const urlEventToken = params.get('event');
       const isAdminUrl = params.get('admin') === 'true';
 
-      // Si entramos con ?admin=true, activar modo admin y cargar TODO
       if (isAdminUrl) {
           setIsAdminMode(true);
       }
 
       if (isAdminMode) {
-          // MODO ADMIN: Cargar TODOS los eventos (costoso pero necesario)
-          console.log("Modo Admin: Cargando lista completa de eventos...");
+          console.log("Modo Admin: Cargando lista completa...");
           unsubscribe = subscribeToEvents((fetchedEvents) => {
               setEvents(fetchedEvents);
               setIsLoading(false);
           });
       } else {
-          // MODO VISITANTE: Cargar SOLO el evento necesario (1 lectura)
           console.log("Modo Visitante: Cargando evento único...", urlEventToken || "Último");
           unsubscribe = subscribeToVisitorEvent(urlEventToken, (fetchedEvents) => {
               setEvents(fetchedEvents);
               setIsLoading(false);
-              
-              // Si no encontramos evento y teníamos un token, tal vez fue un 404
-              if (fetchedEvents.length === 0 && urlEventToken) {
-                  console.warn("Evento no encontrado con token:", urlEventToken);
-              }
           });
       }
       
-      // Limpiar suscripción al desmontar o cambiar modo
       return () => {
           if (unsubscribe) unsubscribe();
       };
-  }, [isAdminMode]); // Se re-ejecuta al cambiar entre modo admin/visitante
+  }, [isAdminMode]);
 
-  // Lógica de selección de evento por URL
   const [currentEventId, setCurrentEventId] = useState<string | null>(null);
   
   useEffect(() => {
@@ -166,26 +159,20 @@ export default function App() {
     if (!isLoading) {
         if (events.length > 0) {
             if (token) {
-                // Intentar buscar por token público o ID
                 const foundEvent = events.find(e => e.publicToken === token || e.id === token);
                 if (foundEvent) setCurrentEventId(foundEvent.id);
-                else setCurrentEventId(events[0].id); // Fallback al primero cargado
+                else setCurrentEventId(events[0].id);
             } else if (!currentEventId) {
                 setCurrentEventId(events[0].id);
             }
         } else {
-            // Caso raro: Firebase vacío y no somos admin
-            // Si somos admin, handleCreateEvent se llamará manualmente
-            if (!isAdminMode && !isLoading) {
-                 // No hacer nada, mostrará estado vacío
-            } else if (isAdminMode && events.length === 0) {
+            if (isAdminMode && events.length === 0) {
                  handleCreateEvent();
             }
         }
     }
   }, [events, currentEventId, isLoading, isAdminMode]);
 
-  // Cargar Likes desde LocalStorage cuando cambia el evento
   useEffect(() => {
       if (!currentEventId) return;
       try {
@@ -199,7 +186,6 @@ export default function App() {
       } catch (e) {
           console.error("Error cargando likes locales", e);
       }
-      // Reset pagination on event change
       setVisiblePhotosCount(PHOTOS_PER_PAGE);
       setIsDownloadSelectionMode(false);
       setDownloadSelection(new Set());
@@ -209,35 +195,29 @@ export default function App() {
     events.find(e => e.id === currentEventId) || events[0] || DEFAULT_EVENT_TEMPLATE
   , [events, currentEventId]);
 
-  // --- SYNC PARTICIPANTS FROM PHOTOS (BACKFILL & DEDUPLICATION) ---
+  // SYNC PARTICIPANTS LOGIC
   useEffect(() => {
-      if (!activeEvent || !activeEvent.photos) return;
+      if (!activeEvent || !activeEvent.id) return;
 
       const currentParticipants = activeEvent.participants || [];
-      // Mapas para búsqueda rápida
       const existingIds = new Set(currentParticipants.map(p => p.id));
       const existingNames = new Set(currentParticipants.map(p => p.name.toLowerCase().trim()));
       
       let hasChanges = false;
       const updatedParticipants = [...currentParticipants];
-
-      // Solo consideramos fotos que NO están en la papelera (deleted)
-      const activePhotos = activeEvent.photos.filter(p => !p.isDeleted);
+      
+      // Safety check for photos array
+      const safePhotos = activeEvent.photos || [];
+      const activePhotos = safePhotos.filter(p => !p.isDeleted);
 
       activePhotos.forEach(photo => {
-          // 1. Intentar identificar por ID de dispositivo primero
           const deviceId = photo.deviceId;
-          // 2. Fallback a nombre legacy
           const legacyId = `legacy-${photo.author.name.replace(/\s+/g, '-').toLowerCase()}`;
-          
-          // El ID real que usaremos para comprobar existencia técnica
           const targetId = deviceId || legacyId;
           const normalizedName = photo.author.name.toLowerCase().trim();
 
-          // Lógica de Deduplicación:
           if (!existingIds.has(targetId)) {
               if (!existingNames.has(normalizedName)) {
-                  // No existe ni el ID ni el Nombre -> Es nuevo
                   updatedParticipants.push({
                       id: targetId,
                       name: photo.author.name, 
@@ -252,12 +232,11 @@ export default function App() {
       });
 
       if (hasChanges) {
-          const updatedEvent = { ...activeEvent, participants: updatedParticipants };
-          saveEventToFirebase(updatedEvent);
+          // Usamos la nueva función de solo actualizar campos para no pisar fotos
+          updateEventFieldInFirebase(activeEvent.id, 'participants', updatedParticipants);
       }
-  }, [activeEvent.photos, activeEvent.id, activeEvent.participants]); 
+  }, [activeEvent.photos, activeEvent.id]); // Eliminada dependencia cíclica profunda
 
-  // Combinar fotos de DB con estado local de Likes
   const photos = useMemo(() => {
       const rawPhotos = activeEvent?.photos || [];
       return rawPhotos.map(p => ({
@@ -266,10 +245,8 @@ export default function App() {
       }));
   }, [activeEvent?.photos, likedPhotoIds]);
 
-  // Guest photos should not be archived AND not be deleted
   const guestPhotos = useMemo(() => photos.filter(p => !p.isArchived && !p.isDeleted), [photos]);
 
-  // PAGINATION: Slice the visible photos
   const visiblePhotos = useMemo(() => {
       return guestPhotos.slice(0, visiblePhotosCount);
   }, [guestPhotos, visiblePhotosCount]);
@@ -278,12 +255,10 @@ export default function App() {
       setVisiblePhotosCount(prev => prev + PHOTOS_PER_PAGE);
   };
 
-  // Filter active participants (exclude deleted/trash)
   const activeParticipants = useMemo(() => 
     (activeEvent.participants || []).filter(p => p.status === 'confirmed'), 
   [activeEvent.participants]);
 
-  // STATS CALCULATIONS
   const remainingSpotsDisplay = useMemo(() => {
       const totalCapacity = activeEvent.participantsCount || 0;
       const currentRegistered = activeParticipants.length;
@@ -291,8 +266,6 @@ export default function App() {
       return `${remaining}/${totalCapacity}`;
   }, [activeEvent.participantsCount, activeParticipants]);
 
-
-  // Estados de UI
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
   const [columns, setColumns] = useState<1 | 2>(2);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -300,69 +273,37 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
 
-  // --- SECRET ADMIN ACCESS (CLICK TRIGGER) ---
   const clickCountRef = useRef(0);
   const lastClickTimeRef = useRef(0);
 
   const handleTitleClick = () => {
       const now = Date.now();
-      // Reset if too slow (more than 1 second between clicks)
       if (now - lastClickTimeRef.current > 1000) {
           clickCountRef.current = 0;
       }
-      
       clickCountRef.current += 1;
       lastClickTimeRef.current = now;
-
       if (clickCountRef.current >= 5) {
           setShowLoginModal(true);
-          clickCountRef.current = 0; // Reset after triggering
+          clickCountRef.current = 0; 
       }
   };
 
-  // --- LISTENER PARA ACCESO OCULTO (TECLADO) ---
   useEffect(() => {
     let buffer = '';
-    
     const handleKeyDown = (e: KeyboardEvent) => {
-        // 1. Tecla F2 (Simple y directa)
-        if (e.key === 'F2') {
-            e.preventDefault();
-            setShowLoginModal(true);
-            return;
-        }
-
-        // 2. Combinación Alt + L (Login)
-        if (e.altKey && e.key.toLowerCase() === 'l') {
-            e.preventDefault();
-            setShowLoginModal(true);
-            return;
-        }
-
-        // 3. "Palabra Mágica" (Escribir 'admin' o 'login' en cualquier parte)
-        if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
-            return;
-        }
-
+        if (e.key === 'F2') { e.preventDefault(); setShowLoginModal(true); return; }
+        if (e.altKey && e.key.toLowerCase() === 'l') { e.preventDefault(); setShowLoginModal(true); return; }
+        if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
         if (e.key.length === 1 && /[a-zA-Z]/.test(e.key)) {
             buffer += e.key.toLowerCase();
             if (buffer.length > 10) buffer = buffer.slice(-10);
-
-            if (buffer.endsWith('admin') || buffer.endsWith('login')) {
-                setShowLoginModal(true);
-                buffer = ''; 
-            }
-        } else {
-            if (e.key !== 'Shift') buffer = '';
-        }
+            if (buffer.endsWith('admin') || buffer.endsWith('login')) { setShowLoginModal(true); buffer = ''; }
+        } else { if (e.key !== 'Shift') buffer = ''; }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-
-  // --- ACCIONES (CONECTADAS A FIREBASE) ---
 
   const handleCreateEvent = async () => {
     const id = `event-${Date.now()}`;
@@ -375,7 +316,6 @@ export default function App() {
       participants: []
     };
     await saveEventToFirebase(newEvent);
-    // Nota: Como estamos en Admin Mode, la suscripción recogerá este cambio automáticamente
     setCurrentEventId(id);
   };
 
@@ -389,13 +329,13 @@ export default function App() {
         await updateEventFieldInFirebase(activeEvent.id, fieldPath, value);
     } catch (error: any) {
         console.error(`Failed to update field ${fieldPath}:`, error);
-        alert(`Hubo un error al guardar el cambio para ${fieldPath}: ${error.message}`);
+        alert(`Hubo un error: ${error.message}`);
     }
   };
 
   const handleDeleteEvent = async (id: string) => {
     if (events.length <= 1) {
-      alert("No puedes eliminar el último evento. Debes tener al menos uno.");
+      alert("No puedes eliminar el último evento.");
       return;
     }
     const remainingEvents = events.filter(e => e.id !== id);
@@ -411,7 +351,6 @@ export default function App() {
         await deleteEventFromFirebase(id);
     } catch (error) {
         console.error("Error eliminando evento:", error);
-        alert("Hubo un error al eliminar el evento de la base de datos.");
         window.location.reload();
     } finally {
         setIsProcessing(false);
@@ -419,60 +358,24 @@ export default function App() {
   };
 
   const handlePhotoUpload = async (files: File[], authorName: string) => {
-    const newPhotos: Photo[] = [];
     const authorColor = activeEvent.theme?.primaryColor || '#a87b51';
 
+    // No actualizamos el estado local manualmente. Confiamos en la suscripción de Firestore.
+    // Solo subimos los archivos y la base de datos disparará el update.
     for (const file of files) {
         try {
-            const photoObject = await processAndUploadPhoto(
+            await processAndUploadPhoto(
                 file, 
                 activeEvent.id, 
                 authorName, 
                 authorColor,
                 deviceId 
             );
-            newPhotos.push(photoObject);
         } catch (error) {
             console.error("Error subiendo archivo:", file.name, error);
         }
     }
-
-    if (newPhotos.length > 0) {
-        let currentParticipants = [...(activeEvent.participants || [])];
-        const userId = deviceId; 
-        
-        const participantIndexById = currentParticipants.findIndex(p => p.id === userId);
-        const participantIndexByName = currentParticipants.findIndex(p => p.name.toLowerCase() === authorName.toLowerCase());
-        
-        if (participantIndexById === -1 && participantIndexByName === -1) {
-            const newParticipant: Participant = {
-                id: userId, 
-                name: authorName,
-                status: 'confirmed', 
-                addedAt: new Date().toISOString().split('T')[0]
-            };
-            currentParticipants.push(newParticipant);
-        } else {
-             const indexToUpdate = participantIndexById !== -1 ? participantIndexById : participantIndexByName;
-             
-             if (indexToUpdate !== -1) {
-                 if (currentParticipants[indexToUpdate].status === 'declined') {
-                     currentParticipants[indexToUpdate] = {
-                         ...currentParticipants[indexToUpdate],
-                         status: 'confirmed',
-                         name: authorName
-                     };
-                 }
-             }
-        }
-
-        const updatedEvent = {
-            ...activeEvent,
-            photos: [...newPhotos, ...activeEvent.photos],
-            participants: currentParticipants
-        };
-        await saveEventToFirebase(updatedEvent);
-    }
+    // La actualización de participantes se manejará en el useEffect de sincronización
   };
 
   const handleDriveImport = async (files: File[]) => {
@@ -480,46 +383,18 @@ export default function App() {
     try {
         const authorName = activeEvent.clientName || 'Admin';
         const authorColor = activeEvent.theme?.secondaryColor || '#4f46e5';
-        const newPhotos: Photo[] = [];
+        const importerDeviceId = `drive-importer-${activeEvent.id}`;
 
         for (const file of files) {
             try {
-                const importerDeviceId = `drive-importer-${activeEvent.id}`;
-                const photoObject = await processAndUploadPhoto(file, activeEvent.id, authorName, authorColor, importerDeviceId);
-                newPhotos.push(photoObject);
+                await processAndUploadPhoto(file, activeEvent.id, authorName, authorColor, importerDeviceId);
             } catch (error) {
                 console.error(`Error processing Drive file ${file.name}:`, error);
             }
         }
-
-        if (newPhotos.length > 0) {
-            const latestEvent = await getEvent(activeEvent.id);
-            if (!latestEvent) throw new Error("Event not found for Drive import.");
-
-            let updatedParticipants = [...(latestEvent.participants || [])];
-            const importerDeviceId = `drive-importer-${latestEvent.id}`;
-
-            const existingIndex = updatedParticipants.findIndex(p => p.id === importerDeviceId || p.name === authorName);
-            
-            if (existingIndex === -1) {
-                updatedParticipants.push({
-                    id: importerDeviceId,
-                    name: authorName,
-                    status: 'confirmed',
-                    addedAt: new Date().toISOString().split('T')[0],
-                });
-            }
-
-            const updatedEvent = {
-                ...latestEvent,
-                photos: [...newPhotos, ...latestEvent.photos],
-                participants: updatedParticipants,
-            };
-            await saveEventToFirebase(updatedEvent);
-        }
     } catch (error: any) {
         console.error("Failed to import from Google Drive:", error);
-        alert(`Hubo un error al importar las fotos de Google Drive: ${error.message}`);
+        alert(`Error al importar: ${error.message}`);
     } finally {
         setIsProcessing(false);
     }
@@ -540,15 +415,8 @@ export default function App() {
       
       localStorage.setItem(`album_likes_${activeEvent.id}`, JSON.stringify(Array.from(newLikedIds)));
 
-      const updatedPhotos = activeEvent.photos.map(p => {
-          if (p.id === photoId) {
-              const newCount = Math.max(0, p.likes + (isLiked ? -1 : 1));
-              return { ...p, likes: newCount, likedByMe: false }; 
-          }
-          return p;
-      });
-      
-      await saveEventToFirebase({ ...activeEvent, photos: updatedPhotos });
+      // Llamada atómica optimizada
+      await togglePhotoLike(activeEvent.id, photoId, !isLiked);
   };
 
   const handleReport = (photoId: string) => {
@@ -557,174 +425,79 @@ export default function App() {
 
   const handleDeletePhoto = async (photoId: string) => {
     if (!currentEventId) return;
-    const eventBeforeUpdate = events.find(e => e.id === currentEventId);
-    if (!eventBeforeUpdate) return;
-    
-    const optimisticallyUpdatedPhotos = eventBeforeUpdate.photos.map(p =>
-      p.id === photoId ? { ...p, isDeleted: true } : p
-    );
-    const optimisticEvent = { ...eventBeforeUpdate, photos: optimisticallyUpdatedPhotos };
-    setEvents(events.map(e => e.id === currentEventId ? optimisticEvent : e));
-    
     try {
-      const latestEvent = await getEvent(currentEventId); 
-      if (latestEvent) {
-           const updatedPhotos = latestEvent.photos.map(p => 
-                p.id === photoId ? { ...p, isDeleted: true } : p
-           );
-           await updateEventFieldInFirebase(currentEventId, 'photos', updatedPhotos);
-      }
+      await softDeletePhoto(currentEventId, photoId);
     } catch (error: any) {
-      console.error("Error during soft delete:", error);
-      alert(`Hubo un error al mover la foto a la papelera: ${error.message}`);
-      setEvents(events.map(e => e.id === currentEventId ? eventBeforeUpdate : e));
+      console.error("Error soft delete:", error);
+      alert(`Error al eliminar: ${error.message}`);
     }
-  };
-
-  const handleBulkRestore = (photoIds: string[]) => {
-      let updatedParticipants = [...(activeEvent.participants || [])];
-      
-      const photosToRestore = activeEvent.photos.filter(p => photoIds.includes(p.id));
-      
-      photosToRestore.forEach(photo => {
-          const participantId = photo.deviceId || `legacy-${photo.author.name.replace(/\s+/g, '-').toLowerCase()}`;
-          const pIndex = updatedParticipants.findIndex(p => p.id === participantId || p.name === photo.author.name);
-          
-          if (pIndex !== -1 && updatedParticipants[pIndex].status === 'declined') {
-              updatedParticipants[pIndex] = { 
-                  ...updatedParticipants[pIndex], 
-                  status: 'confirmed' 
-              };
-          }
-      });
-
-      const updatedPhotos = activeEvent.photos.map(p => 
-          photoIds.includes(p.id) 
-            ? { ...p, isDeleted: false, isArchived: false } 
-            : p
-      );
-      
-      handleUpdateEvent({ 
-          ...activeEvent, 
-          photos: updatedPhotos,
-          participants: updatedParticipants
-      });
   };
 
   const handleRestorePhoto = (photoId: string) => {
-      handleBulkRestore([photoId]);
+      if (!currentEventId) return;
+      restorePhoto(currentEventId, photoId);
   };
 
   const handlePermanentPhotoRemoval = async (photoIdsToRemove: string[]) => {
-    if (!currentEventId || photoIdsToRemove.length === 0) {
-      return;
-    }
-
+    if (!currentEventId || photoIdsToRemove.length === 0) return;
     setIsProcessing(true);
     try {
-      const latestEvent = await getEvent(currentEventId);
-      if (!latestEvent) throw new Error("No se pudo sincronizar con el evento.");
-
+      const latestEvent = activeEvent; // Usamos el estado actual que está sincronizado
       const idsSet = new Set(photoIdsToRemove);
       const photosToDelete = latestEvent.photos.filter(p => idsSet.has(p.id));
-      const urlsToDelete = photosToDelete.map(p => p.url).filter(Boolean);
 
       const CHUNK_SIZE = 3; 
-      for (let i = 0; i < urlsToDelete.length; i += CHUNK_SIZE) {
-          const chunk = urlsToDelete.slice(i, i + CHUNK_SIZE);
-          await Promise.allSettled(chunk.map(url => deleteFileFromFirebase(url)));
-          await new Promise(resolve => setTimeout(resolve, 100));
+      for (let i = 0; i < photosToDelete.length; i += CHUNK_SIZE) {
+          const chunk = photosToDelete.slice(i, i + CHUNK_SIZE);
+          await Promise.allSettled(chunk.map(p => permanentDeletePhoto(currentEventId, p.id, p.url)));
       }
-      
-      const updatedPhotos = latestEvent.photos.filter(p => !idsSet.has(p.id));
-      await updateEventFieldInFirebase(currentEventId, 'photos', updatedPhotos);
-
-      setEvents(prevEvents => prevEvents.map(e => {
-          if (e.id === currentEventId) {
-              return { ...e, photos: updatedPhotos };
-          }
-          return e;
-      }));
-      
-      alert(`Operación completada. Se eliminaron ${photoIdsToRemove.length} elementos permanentemente.`);
-
+      alert(`Eliminados ${photoIdsToRemove.length} elementos permanentemente.`);
     } catch (error: any) {
-      console.error("Error en la eliminación permanente:", error);
-      if (error.message.includes("Permiso denegado") || error.code === 'storage/unauthorized' || error.code === 'permission-denied') {
-          alert("ERROR DE PERMISOS: Firebase bloqueó la eliminación.");
-      } else {
-          alert(`Hubo un error al eliminar los archivos: ${error.message}`);
-      }
-      throw error;
+      console.error("Error eliminación permanente:", error);
+      alert(`Error: ${error.message}`);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleBulkPermanentDelete = (ids: string[]) => {
-    return handlePermanentPhotoRemoval(ids);
-  };
-
-  const handlePermanentDelete = (photoId: string) => {
-    return handlePermanentPhotoRemoval([photoId]);
-  };
-  
   const handleArchivePhoto = (photoId: string) => {
-      const updatedPhotos = activeEvent.photos.map(p => 
-          p.id === photoId ? { ...p, isArchived: !p.isArchived } : p
-      );
-      handleUpdateEvent({ ...activeEvent, photos: updatedPhotos });
+      if (!currentEventId) return;
+      const photo = activeEvent.photos.find(p => p.id === photoId);
+      if (photo) {
+          archivePhoto(currentEventId, photoId, !photo.isArchived);
+      }
   };
 
   const handleBulkDelete = async (photoIds: string[]) => {
     if (!currentEventId) return;
-    const idsSet = new Set(photoIds);
-
-    const eventBeforeUpdate = events.find(e => e.id === currentEventId);
-    if (!eventBeforeUpdate) return;
-
-    const optimisticallyUpdatedPhotos = eventBeforeUpdate.photos.map(p =>
-      idsSet.has(p.id) ? { ...p, isDeleted: true } : p
-    );
-    const optimisticEvent = { ...eventBeforeUpdate, photos: optimisticallyUpdatedPhotos };
-    setEvents(events.map(e => e.id === currentEventId ? optimisticEvent : e));
-
     try {
-      const latestEvent = await getEvent(currentEventId);
-      if (latestEvent) {
-          const updatedPhotos = latestEvent.photos.map(p =>
-            idsSet.has(p.id) ? { ...p, isDeleted: true } : p
-          );
-          await updateEventFieldInFirebase(currentEventId, 'photos', updatedPhotos);
-      }
+        await batchUpdatePhotos(currentEventId, photoIds, { isDeleted: true });
     } catch (error) {
-      console.error("Error during bulk soft delete:", error);
-      alert("Hubo un error al mover las fotos a la papelera.");
-      setEvents(events.map(e => e.id === currentEventId ? eventBeforeUpdate : e));
+        console.error("Error bulk delete:", error);
+        alert("Error al eliminar fotos.");
     }
   };
 
-  const handleBulkArchive = (photoIds: string[], shouldArchive: boolean) => {
-      const updatedPhotos = activeEvent.photos.map(p => 
-          photoIds.includes(p.id) ? { ...p, isArchived: shouldArchive } : p
-      );
-      handleUpdateEvent({ ...activeEvent, photos: updatedPhotos });
+  const handleBulkRestore = async (photoIds: string[]) => {
+      if (!currentEventId) return;
+      await batchUpdatePhotos(currentEventId, photoIds, { isDeleted: false, isArchived: false });
   };
 
-  // --- SELECTION & DOWNLOAD LOGIC ---
+  const handleBulkArchive = async (photoIds: string[], shouldArchive: boolean) => {
+      if (!currentEventId) return;
+      await batchUpdatePhotos(currentEventId, photoIds, { isArchived: shouldArchive });
+  };
+
   const handleEnableSelectionMode = () => {
       setIsDownloadSelectionMode(true);
       setDownloadSelection(new Set());
-      setIsDownloadModalOpen(false); // Close download modal to show gallery
+      setIsDownloadModalOpen(false); 
   };
 
   const toggleDownloadSelection = (id: string) => {
       const newSet = new Set(downloadSelection);
-      if (newSet.has(id)) {
-          newSet.delete(id);
-      } else {
-          newSet.add(id);
-      }
+      if (newSet.has(id)) newSet.delete(id);
+      else newSet.add(id);
       setDownloadSelection(newSet);
   };
 
@@ -733,7 +506,6 @@ export default function App() {
       const photosToDownload = guestPhotos.filter(p => selectedIds.includes(p.id));
       
       if (photosToDownload.length === 0) return;
-
       setIsZippingSelected(true);
       
       try {
@@ -744,14 +516,8 @@ export default function App() {
           for (const photo of photosToDownload) {
               if (!photo.url) continue;
               try {
-                  // Bypass Cache: Append timestamp to URL to avoid CORS cached response
                   const fetchUrl = `${photo.url}${photo.url.includes('?') ? '&' : '?'}t=${Date.now()}`;
-                  
-                  const response = await fetch(fetchUrl, { 
-                      mode: 'cors', // Critical for the fix you applied in Cloud Shell
-                      credentials: 'omit', 
-                      cache: 'no-store' 
-                  });
+                  const response = await fetch(fetchUrl, { mode: 'cors', credentials: 'omit', cache: 'no-store' });
                   if (!response.ok) throw new Error("Fetch failed");
                   
                   const blob = await response.blob();
@@ -759,22 +525,20 @@ export default function App() {
                   const filename = `${(photo.title || 'foto').replace(/[^a-z0-9]/gi, '_')}_${photo.id.slice(-4)}.${ext}`;
                   folder?.file(filename, blob);
               } catch (err) {
-                  console.warn("Failed to download photo for zip:", photo.id, err);
                   failedCount++;
               }
-              // Small delay to prevent network congestion
               await new Promise(r => setTimeout(r, 100));
           }
 
           if (failedCount === photosToDownload.length) {
-              alert("Error: No se pudieron descargar los archivos. Es posible que debas configurar el CORS en tu bucket de Firebase Storage.");
+              alert("Error de descarga. Verifica CORS en Firebase.");
           } else {
               const content = await zip.generateAsync({ type: "blob" });
               saveAs(content, "seleccion_recuerdos.zip");
           }
       } catch (error) {
-          console.error("Zip generation error:", error);
-          alert("Error generando el archivo ZIP.");
+          console.error("Error ZIP:", error);
+          alert("Error generando ZIP.");
       } finally {
           setIsZippingSelected(false);
           setIsDownloadSelectionMode(false);
@@ -782,7 +546,6 @@ export default function App() {
       }
   };
 
-  // --- RENDER ---
   const theme = activeEvent.theme || DEFAULT_EVENT_TEMPLATE.theme!;
   const fontClass = theme.fontFamily === 'serif' ? 'font-serif' : 'font-sans';
   
@@ -820,19 +583,18 @@ export default function App() {
         onDeleteEvent={handleDeleteEvent}
         onDeletePhoto={handleDeletePhoto}
         onRestorePhoto={handleRestorePhoto}
-        onPermanentDelete={handlePermanentDelete}
+        onPermanentDelete={(id) => handlePermanentPhotoRemoval([id])}
         onArchivePhoto={handleArchivePhoto}
         onBulkDelete={handleBulkDelete}
         onBulkArchive={handleBulkArchive}
         onBulkRestore={handleBulkRestore}
-        onBulkPermanentDelete={handleBulkPermanentDelete}
+        onBulkPermanentDelete={handlePermanentPhotoRemoval}
         onDriveImport={handleDriveImport}
         onExit={() => setIsAdminMode(false)} 
       />
     );
   }
   
-  // Calculate dynamic position
   const mobilePos = theme.coverImagePositionY || 50;
   const desktopPos = theme.coverImagePositionDesktopY ?? mobilePos;
 
@@ -876,7 +638,6 @@ export default function App() {
         </div>
       )}
 
-      {/* SELECTION MODE STICKY HEADER/BAR */}
       {isDownloadSelectionMode && (
           <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-xl p-4 animate-slide-up">
               <div className="max-w-4xl mx-auto flex items-center justify-between">
@@ -948,7 +709,7 @@ export default function App() {
                     onClick={handleTitleClick}
                     className="text-2xl md:text-3xl font-bold cursor-default select-none active:opacity-80 transition-opacity" 
                     style={{ color: theme.headerTitleColor || theme.textColor }}
-                    title=" " // Hide tooltip
+                    title=" "
                 >
                     {activeEvent.title}
                 </h1>
@@ -1008,7 +769,6 @@ export default function App() {
             >
             <div className="flex items-center gap-4 w-full sm:w-auto">
                 <span className="font-bold flex items-center gap-2"><LayoutGrid size={20} /> Vista de Galería</span>
-                {/* Ocultar en móvil si no es modo selección */}
                 <div className={`hidden md:flex gap-2 ml-auto sm:ml-4 ${isDownloadSelectionMode ? 'opacity-50 pointer-events-none' : ''}`}>
                     <button onClick={() => setColumns(1)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 1 ? 'shadow-sm' : 'bg-transparent border-current opacity-70'}`} style={columns === 1 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor, borderColor: theme.secondaryColor } : {}}><LayoutList size={16} /></button>
                     <button onClick={() => setColumns(2)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 2 ? 'shadow-sm' : 'bg-transparent border-current opacity-70'}`} style={columns === 2 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor, borderColor: theme.secondaryColor } : {}}><LayoutGrid size={16} /></button>
@@ -1034,7 +794,6 @@ export default function App() {
             </div>
         ) : (
             <>
-                {/* FORZAR 1 COLUMNA EN MÓVIL (grid-cols-1), 2 EN MD+ (md:grid-cols-2) SI columns=2 */}
                 <div className={`grid gap-6 ${columns === 1 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
                 {visiblePhotos.map((photo, index) => (
                     <div 
@@ -1100,7 +859,6 @@ export default function App() {
                 ))}
                 </div>
 
-                {/* PAGINATION LOAD MORE BUTTON */}
                 {visiblePhotosCount < guestPhotos.length && (
                     <div className="flex justify-center mt-10 mb-6">
                         <button 
