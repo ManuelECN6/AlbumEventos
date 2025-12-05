@@ -1,4 +1,5 @@
 
+
 import { db, storage } from '../firebaseConfig';
 import { 
   collection, 
@@ -10,7 +11,9 @@ import {
   deleteDoc, 
   onSnapshot,
   query,
-  orderBy 
+  orderBy,
+  limit,
+  where
 } from 'firebase/firestore';
 import { 
   ref, 
@@ -23,8 +26,8 @@ import { EventConfig, Photo } from '../types';
 const EVENTS_COLLECTION = 'events';
 
 /**
- * ESCUCHAR EVENTOS EN TIEMPO REAL
- * Suscribe la app a cambios en la base de datos.
+ * ESCUCHAR EVENTOS EN TIEMPO REAL (ADMIN)
+ * Suscribe la app a TODOS los eventos (Costoso en lecturas, usar solo para Admin).
  */
 export const subscribeToEvents = (callback: (events: EventConfig[]) => void) => {
   const q = query(collection(db, EVENTS_COLLECTION), orderBy('date', 'desc'));
@@ -33,6 +36,50 @@ export const subscribeToEvents = (callback: (events: EventConfig[]) => void) => 
     const events = snapshot.docs.map(doc => doc.data() as EventConfig);
     callback(events);
   });
+};
+
+/**
+ * ESCUCHAR UN SOLO EVENTO (VISITANTE) - OPTIMIZADO
+ * Ahorra costos leyendo solo 1 documento en lugar de toda la colección.
+ * Soporta búsqueda por ID o por publicToken.
+ */
+export const subscribeToVisitorEvent = (identifier: string | null, callback: (events: EventConfig[]) => void) => {
+  // 1. Si no hay identificador, traer solo el ÚLTIMO evento (Limit 1)
+  if (!identifier) {
+    const q = query(collection(db, EVENTS_COLLECTION), orderBy('date', 'desc'), limit(1));
+    return onSnapshot(q, (snapshot) => {
+      const events = snapshot.docs.map(doc => doc.data() as EventConfig);
+      callback(events);
+    });
+  }
+
+  // 2. Determinar si es un ID o un Token
+  // Los IDs en esta app empiezan con 'event-' pero NO 'evento-' (que son tokens)
+  // Esta heurística ahorra una lectura extra de "búsqueda".
+  const isLikelyId = identifier.startsWith('event-') && !identifier.startsWith('evento-');
+
+  if (isLikelyId) {
+    // Suscripción directa al documento (Más barato y rápido)
+    const docRef = doc(db, EVENTS_COLLECTION, identifier);
+    return onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        callback([docSnap.data() as EventConfig]);
+      } else {
+        // Si no existe por ID, intentamos por Token como fallback
+        // (Por si acaso alguien nombró manualmente un token como un id)
+        const qToken = query(collection(db, EVENTS_COLLECTION), where('publicToken', '==', identifier), limit(1));
+        return onSnapshot(qToken, (qSnap) => {
+           callback(qSnap.docs.map(d => d.data() as EventConfig));
+        });
+      }
+    });
+  } else {
+    // Búsqueda por Token Público
+    const qToken = query(collection(db, EVENTS_COLLECTION), where('publicToken', '==', identifier), limit(1));
+    return onSnapshot(qToken, (snapshot) => {
+      callback(snapshot.docs.map(doc => doc.data() as EventConfig));
+    });
+  }
 };
 
 /**
@@ -126,7 +173,17 @@ export const uploadFileToFirebase = async (file: File, path: string): Promise<st
   try {
     console.log(`[FirebaseService] Subiendo: ${path} (${(file.size/1024).toFixed(2)} KB)`);
     const storageRef = ref(storage, path);
-    const snapshot = await uploadBytes(storageRef, file);
+    
+    // Configuración de Metadata para Caché (Ahorro de Bandwidth/Costos)
+    const metadata = {
+        // public: puede ser cacheado por cualquiera (CDN, browser)
+        // max-age=31536000: 1 año en segundos
+        // immutable: el contenido no cambiará, no es necesario revalidar
+        cacheControl: 'public, max-age=31536000, immutable',
+        contentType: file.type,
+    };
+
+    const snapshot = await uploadBytes(storageRef, file, metadata);
     const downloadURL = await getDownloadURL(snapshot.ref);
     return downloadURL;
   } catch (error) {
@@ -139,7 +196,7 @@ export const uploadFileToFirebase = async (file: File, path: string): Promise<st
  * REDIMENSIONAR IMAGEN (Helper Flex)
  * Permite crear versiones de diferentes tamaños y calidades.
  * maxWidth: Ancho máximo en px.
- * quality: Calidad JPEG (0.0 - 1.0).
+ * quality: Calidad WebP (0.0 - 1.0).
  */
 const resizeImage = (file: File, maxWidth: number, quality: number): Promise<File> => {
     return new Promise((resolve, reject) => {
@@ -183,20 +240,21 @@ const resizeImage = (file: File, maxWidth: number, quality: number): Promise<Fil
             // Dibujar imagen redimensionada
             ctx.drawImage(img, 0, 0, width, height);
             
+            // CONVERSIÓN A WEBP
             canvas.toBlob((blob) => {
                 URL.revokeObjectURL(url);
                 if (blob) {
-                    // Crear nuevo archivo comprimido manteniendo extensión jpg
-                    const newName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+                    // Crear nuevo archivo comprimido con extensión .webp
+                    const newName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
                     const compressedFile = new File([blob], newName, {
-                        type: 'image/jpeg',
+                        type: 'image/webp',
                         lastModified: Date.now(),
                     });
                     resolve(compressedFile);
                 } else {
                     resolve(file); // Fallback
                 }
-            }, 'image/jpeg', quality);
+            }, 'image/webp', quality);
         };
 
         img.onerror = () => {
@@ -211,8 +269,8 @@ const resizeImage = (file: File, maxWidth: number, quality: number): Promise<Fil
 /**
  * PROCESAR Y SUBIR FOTOS (OPTIMIZADO)
  * Sube DOS versiones de cada foto:
- * 1. Principal (HD) -> Para Lightbox y Descarga.
- * 2. Thumbnail (SD) -> Para la Galería (ahorra mucho ancho de banda).
+ * 1. Principal (HD) -> Para Lightbox y Descarga (WebP).
+ * 2. Thumbnail (SD) -> Para la Galería (WebP).
  */
 export const processAndUploadPhoto = async (
   file: File, 
@@ -225,6 +283,15 @@ export const processAndUploadPhoto = async (
   if (!eventId) throw new Error("ID de evento requerido para subir archivos.");
 
   const isVideo = file.type.startsWith('video/') || file.type === 'video/quicktime';
+
+  // --- VALIDACIÓN DE TAMAÑO DE VIDEO (Nivel Básico) ---
+  if (isVideo) {
+      const MAX_VIDEO_SIZE_MB = 100; // Límite estricto de seguridad
+      if (file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+          throw new Error(`El video es demasiado grande (${(file.size / 1024 / 1024).toFixed(1)}MB). El límite de seguridad es ${MAX_VIDEO_SIZE_MB}MB.`);
+      }
+  }
+
   const timestamp = Date.now();
   
   // Usar deviceId o fallback a 'anonimo'
@@ -234,38 +301,43 @@ export const processAndUploadPhoto = async (
 
   // Nombres base
   const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
-  const uniqueFileName = `${timestamp}_${sanitizedFileName}`;
+  
+  // Nombre base para WebP (si es foto)
+  const baseNameNoExt = sanitizedFileName.replace(/\.[^/.]+$/, "");
+  const webpFileName = `${timestamp}_${baseNameNoExt}.webp`;
+  
+  // Nombre original para video
+  const uniqueVideoName = `${timestamp}_${sanitizedFileName}`;
   
   let mainDownloadUrl = '';
   let thumbDownloadUrl = '';
 
   if (isVideo) {
       // Para videos, subimos el original (validado por tamaño en UI)
-      // En el futuro se podría generar un poster frame aquí.
-      const path = `eventos/${eventId}/${userIdFolder}/${uniqueFileName}`;
+      const path = `eventos/${eventId}/${userIdFolder}/${uniqueVideoName}`;
       mainDownloadUrl = await uploadFileToFirebase(file, path);
       // Usamos el mismo video como thumbnail (el navegador intentará cargar el primer frame)
       thumbDownloadUrl = mainDownloadUrl; 
   } else {
-      // --- OPTIMIZACIÓN DE IMÁGENES (COST SAVING) ---
+      // --- OPTIMIZACIÓN DE IMÁGENES (COST SAVING: WEBP) ---
       
       try {
-          // A. Generar IMAGEN PRINCIPAL (Full HD - 1920px, 0.8 calidad)
-          // Reduce 5MB -> ~300KB. Suficiente para pantalla completa.
+          // A. Generar IMAGEN PRINCIPAL (Full HD - 1920px, 0.8 calidad WebP)
+          // Reduce drásticamente el peso manteniendo calidad visual
           const mainImage = await resizeImage(file, 1920, 0.8);
-          const mainPath = `eventos/${eventId}/${userIdFolder}/${uniqueFileName}`;
+          const mainPath = `eventos/${eventId}/${userIdFolder}/${webpFileName}`;
           mainDownloadUrl = await uploadFileToFirebase(mainImage, mainPath);
 
-          // B. Generar THUMBNAIL (Miniatura - 500px, 0.6 calidad)
-          // Crea versión de ~20-30KB para la cuadrícula. Ahorro masivo de ancho de banda.
+          // B. Generar THUMBNAIL (Miniatura - 500px, 0.6 calidad WebP)
+          // Crea versión muy ligera para la cuadrícula
           const thumbImage = await resizeImage(file, 500, 0.6);
-          const thumbPath = `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${uniqueFileName}`;
+          const thumbPath = `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${webpFileName}`;
           thumbDownloadUrl = await uploadFileToFirebase(thumbImage, thumbPath);
 
       } catch (e) {
           console.warn("Falló optimización de imagen, subiendo original", e);
           // Fallback seguro: subir original si falla el procesamiento
-          const path = `eventos/${eventId}/${userIdFolder}/${uniqueFileName}`;
+          const path = `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedFileName}`;
           mainDownloadUrl = await uploadFileToFirebase(file, path);
           thumbDownloadUrl = mainDownloadUrl;
       }
@@ -274,8 +346,8 @@ export const processAndUploadPhoto = async (
   // 5. CREACIÓN DE OBJETO PHOTO
   const newPhoto: Photo = {
     id: `photo-${timestamp}`,
-    url: mainDownloadUrl,      // Imagen de alta calidad
-    thumbnail: thumbDownloadUrl, // Miniatura ligera
+    url: mainDownloadUrl,      // Imagen optimizada (WebP)
+    thumbnail: thumbDownloadUrl, // Miniatura ligera (WebP)
     width: 800, // Valor estimado
     height: 600,
     title: file.name,

@@ -1,10 +1,12 @@
+
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Lightbox } from './components/Lightbox';
 import { UploadModal } from './components/UploadModal';
 import { DownloadModal } from './components/DownloadModal';
 import { AdminPanel } from './components/AdminPanel';
 import { Photo, EventConfig, Participant } from './types';
-import { subscribeToEvents, saveEventToFirebase, deleteEventFromFirebase, processAndUploadPhoto, deleteFileFromFirebase, getEvent, updateEventFieldInFirebase } from './services/firebaseService';
+import { subscribeToEvents, subscribeToVisitorEvent, saveEventToFirebase, deleteEventFromFirebase, processAndUploadPhoto, deleteFileFromFirebase, getEvent, updateEventFieldInFirebase } from './services/firebaseService';
 import { 
   Heart, 
   Camera, 
@@ -85,6 +87,10 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false); // Estado global de carga para operaciones
   const [deviceId, setDeviceId] = useState<string>('');
 
+  // Estados de UI Admin
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+
   // Estado local para los Likes (Persistencia por dispositivo)
   const [likedPhotoIds, setLikedPhotoIds] = useState<Set<string>>(new Set());
   
@@ -109,17 +115,46 @@ export default function App() {
     setDeviceId(storedId);
   }, []);
 
-  // --- CONEXIÓN CON FIREBASE (REALTIME) ---
+  // --- CONEXIÓN CON FIREBASE (OPTIMIZADA) ---
   useEffect(() => {
-      // Suscribirse a cambios en la base de datos
-      const unsubscribe = subscribeToEvents((fetchedEvents) => {
-          setEvents(fetchedEvents);
-          setIsLoading(false);
-      });
+      let unsubscribe: () => void;
+
+      // Detectar URL param
+      const params = new URLSearchParams(window.location.search);
+      const urlEventToken = params.get('event');
+      const isAdminUrl = params.get('admin') === 'true';
+
+      // Si entramos con ?admin=true, activar modo admin y cargar TODO
+      if (isAdminUrl) {
+          setIsAdminMode(true);
+      }
+
+      if (isAdminMode) {
+          // MODO ADMIN: Cargar TODOS los eventos (costoso pero necesario)
+          console.log("Modo Admin: Cargando lista completa de eventos...");
+          unsubscribe = subscribeToEvents((fetchedEvents) => {
+              setEvents(fetchedEvents);
+              setIsLoading(false);
+          });
+      } else {
+          // MODO VISITANTE: Cargar SOLO el evento necesario (1 lectura)
+          console.log("Modo Visitante: Cargando evento único...", urlEventToken || "Último");
+          unsubscribe = subscribeToVisitorEvent(urlEventToken, (fetchedEvents) => {
+              setEvents(fetchedEvents);
+              setIsLoading(false);
+              
+              // Si no encontramos evento y teníamos un token, tal vez fue un 404
+              if (fetchedEvents.length === 0 && urlEventToken) {
+                  console.warn("Evento no encontrado con token:", urlEventToken);
+              }
+          });
+      }
       
-      // Limpiar suscripción al desmontar
-      return () => unsubscribe();
-  }, []);
+      // Limpiar suscripción al desmontar o cambiar modo
+      return () => {
+          if (unsubscribe) unsubscribe();
+      };
+  }, [isAdminMode]); // Se re-ejecuta al cambiar entre modo admin/visitante
 
   // Lógica de selección de evento por URL
   const [currentEventId, setCurrentEventId] = useState<string | null>(null);
@@ -128,19 +163,27 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('event');
     
-    if (!isLoading && events.length > 0) {
-        if (token) {
-            const foundEvent = events.find(e => e.publicToken === token || e.id === token);
-            if (foundEvent) setCurrentEventId(foundEvent.id);
-            else if (!currentEventId) setCurrentEventId(events[0].id);
-        } else if (!currentEventId) {
-            setCurrentEventId(events[0].id);
+    if (!isLoading) {
+        if (events.length > 0) {
+            if (token) {
+                // Intentar buscar por token público o ID
+                const foundEvent = events.find(e => e.publicToken === token || e.id === token);
+                if (foundEvent) setCurrentEventId(foundEvent.id);
+                else setCurrentEventId(events[0].id); // Fallback al primero cargado
+            } else if (!currentEventId) {
+                setCurrentEventId(events[0].id);
+            }
+        } else {
+            // Caso raro: Firebase vacío y no somos admin
+            // Si somos admin, handleCreateEvent se llamará manualmente
+            if (!isAdminMode && !isLoading) {
+                 // No hacer nada, mostrará estado vacío
+            } else if (isAdminMode && events.length === 0) {
+                 handleCreateEvent();
+            }
         }
-    } else if (!isLoading && events.length === 0) {
-        // Si no hay eventos en Firebase, crear uno por defecto automáticamente
-        handleCreateEvent();
     }
-  }, [events, currentEventId, isLoading]);
+  }, [events, currentEventId, isLoading, isAdminMode]);
 
   // Cargar Likes desde LocalStorage cuando cambia el evento
   useEffect(() => {
@@ -254,8 +297,6 @@ export default function App() {
   const [columns, setColumns] = useState<1 | 2>(2);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const [isAdminMode, setIsAdminMode] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
 
@@ -316,11 +357,6 @@ export default function App() {
         }
     };
 
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('admin') === 'true') {
-        setShowLoginModal(true);
-    }
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
@@ -339,6 +375,7 @@ export default function App() {
       participants: []
     };
     await saveEventToFirebase(newEvent);
+    // Nota: Como estamos en Admin Mode, la suscripción recogerá este cambio automáticamente
     setCurrentEventId(id);
   };
 
