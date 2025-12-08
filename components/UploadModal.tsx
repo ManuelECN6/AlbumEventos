@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { X, Upload, User, Image as ImageIcon, Info, AlertCircle, Trash2, CheckCircle, Video, Loader2 } from 'lucide-react';
+import { X, Upload, User, Image as ImageIcon, Info, AlertCircle, Trash2, CheckCircle, Video, Loader2, Lock } from 'lucide-react';
 import { EventConfig } from '../types';
 
 interface UploadModalProps {
@@ -77,7 +77,36 @@ const FilePreviewItem: React.FC<FilePreviewItemProps> = ({ file, onRemove }) => 
 };
 
 export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event, onUpload, deviceId }) => {
-  const [authorName, setAuthorName] = useState('');
+  // 1. Determinar el ID efectivo
+  const effectiveDeviceId = useMemo(() => {
+      return deviceId || localStorage.getItem('album_device_id') || 'unknown-device';
+  }, [deviceId]);
+
+  // 2. Detectar si este usuario ya existe en el evento
+  const existingUserInEvent = useMemo(() => {
+      return event.photos.find(p => p.deviceId === effectiveDeviceId);
+  }, [event.photos, effectiveDeviceId]);
+
+  // 3. Inicializar nombre: O el del evento, o el del localStorage, o vacío
+  const [authorName, setAuthorName] = useState(() => {
+      if (existingUserInEvent) return existingUserInEvent.author.name;
+      return localStorage.getItem('album_user_name') || '';
+  });
+
+  // Efecto para actualizar el nombre si se abre el modal y ya existe un registro
+  useEffect(() => {
+      if (isOpen && existingUserInEvent) {
+          setAuthorName(existingUserInEvent.author.name);
+      } else if (isOpen && !authorName) {
+          // Si es nuevo en este evento, intentar recuperar nombre global
+          const globalName = localStorage.getItem('album_user_name');
+          if (globalName) setAuthorName(globalName);
+      }
+  }, [isOpen, existingUserInEvent]);
+
+  // 4. Bloquear el input si ya ha subido fotos antes (Seguridad de Identidad)
+  const isNameLocked = !!existingUserInEvent;
+
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -88,13 +117,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- LÓGICA DE IDENTIDAD ROBUSTA ---
-  // 1. Determinar el ID efectivo: Si deviceId prop falla, buscamos en localStorage.
-  const effectiveDeviceId = useMemo(() => {
-      return deviceId || localStorage.getItem('album_device_id') || 'unknown-device';
-  }, [deviceId]);
-
-  // 2. Calcular límites basados en el ID del dispositivo, NO en el nombre.
+  // 5. Calcular conteos previos estrictos por tipo
   const previousUserPhotos = useMemo(() => 
       event.photos.filter(p => p.deviceId === effectiveDeviceId && p.type !== 'video').length
   , [event.photos, effectiveDeviceId]);
@@ -111,7 +134,6 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
     secondaryTextColor: '#ffffff'
   };
 
-  // Helper for hex opacity
   const hexToRgba = (hex: string, alpha: number) => {
     let c: any;
     if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
@@ -240,11 +262,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
         errorMessages.push(`• ${invalidTypeCount} archivo(s) tienen un formato no válido.`);
     }
     if (photosRejectedByLimit > 0) {
-        const total = previousUserPhotos + currentSessionPhotoCount; // Should equal limit
-        errorMessages.push(`• Se omitieron ${photosRejectedByLimit} fotos. Alcanzarías tu límite de ${event.maxPhotosPerPerson} (tienes ${previousUserPhotos} previas).`);
+        errorMessages.push(`• Se omitieron ${photosRejectedByLimit} fotos por límite de usuario (${event.maxPhotosPerPerson}).`);
     }
     if (videosRejectedByLimit > 0) {
-        errorMessages.push(`• Se omitieron ${videosRejectedByLimit} videos. Alcanzarías tu límite de ${event.maxVideosPerPerson} (tienes ${previousUserVideos} previos).`);
+        errorMessages.push(`• Se omitieron ${videosRejectedByLimit} videos por límite de usuario (${event.maxVideosPerPerson}).`);
     }
 
     if (errorMessages.length > 0) {
@@ -283,7 +304,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
 
   const handleClose = () => {
     if (isUploading) return;
-    setAuthorName('');
+    if (!existingUserInEvent) {
+       setAuthorName(''); // Solo limpiar si no está registrado
+    }
     setSelectedFiles([]);
     setError(null);
     setIsSuccess(false);
@@ -306,6 +329,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
     try {
         await new Promise(resolve => setTimeout(resolve, 100)); 
         await onUpload(selectedFiles, authorName);
+        
+        // Guardar nombre globalmente para futuros eventos
+        localStorage.setItem('album_user_name', authorName);
+
         setIsUploading(false);
         setIsSuccess(true);
         setTimeout(() => {
@@ -392,31 +419,33 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
                         <User size={16} />
                         Tu nombre *
                         </label>
-                        <input 
-                        type="text" 
-                        value={authorName}
-                        onChange={(e) => {
-                            setAuthorName(e.target.value);
-                            if(error?.includes('nombre')) setError(null);
-                        }}
-                        placeholder="Ej: María García"
-                        className="w-full px-4 py-3 rounded-md border border-gray-300 focus:ring-2 outline-none transition-all text-gray-700 placeholder-gray-400"
-                        style={{ 
-                            '--tw-ring-color': hexToRgba(theme.primaryColor, 0.5),
-                            '--tw-ring-opacity': 0.5
-                        } as React.CSSProperties}
-                        onFocus={(e) => {
-                            e.target.style.borderColor = theme.primaryColor;
-                            e.target.style.boxShadow = `0 0 0 3px ${hexToRgba(theme.primaryColor, 0.2)}`;
-                        }}
-                        onBlur={(e) => {
-                            e.target.style.borderColor = '#d1d5db';
-                            e.target.style.boxShadow = 'none';
-                        }}
-                        />
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                value={authorName}
+                                onChange={(e) => {
+                                    setAuthorName(e.target.value);
+                                    if(error?.includes('nombre')) setError(null);
+                                }}
+                                disabled={isNameLocked}
+                                placeholder="Ej: María García"
+                                className={`w-full px-4 py-3 rounded-md border outline-none transition-all ${
+                                    isNameLocked 
+                                    ? 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed' 
+                                    : 'border-gray-300 focus:ring-2 text-gray-700 placeholder-gray-400'
+                                }`}
+                                style={!isNameLocked ? { 
+                                    '--tw-ring-color': hexToRgba(theme.primaryColor, 0.5),
+                                    '--tw-ring-opacity': 0.5
+                                } as React.CSSProperties : {}}
+                            />
+                            {isNameLocked && (
+                                <Lock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            )}
+                        </div>
                         <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
                         <Info size={12} />
-                        <span>Tu nombre aparecerá en los archivos</span>
+                        <span>{isNameLocked ? 'Nombre vinculado a este dispositivo.' : 'Tu nombre aparecerá en los archivos'}</span>
                         </div>
                     </div>
 
@@ -447,10 +476,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
                                  </li>
                              )}
                              <div className="pt-2 border-t border-gray-200">
-                                 <li className="flex justify-between text-xs text-gray-500">
-                                     <span>Max. Video:</span>
-                                     <span className="font-bold">{MAX_VIDEO_MB} MB</span>
-                                 </li>
+                                 {event.allowedMediaTypes.includes('video') && (
+                                     <li className="flex justify-between text-xs text-gray-500">
+                                         <span>Max. Video:</span>
+                                         <span className="font-bold">{MAX_VIDEO_MB} MB</span>
+                                     </li>
+                                 )}
                                  <li className="flex justify-between text-xs text-gray-500 mt-1">
                                      <span>Max. Foto:</span>
                                      <span className="font-bold">{MAX_SIZE_MB} MB</span>
@@ -536,7 +567,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
                 <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between shrink-0">
                 {/* Visual ID for Troubleshooting */}
                 <span className="text-[10px] text-gray-400 mr-auto">
-                    ID Disp: {effectiveDeviceId.slice(-6)}
+                    ID: {effectiveDeviceId.slice(-6)}
                 </span>
                 
                 <div className="flex gap-3">
@@ -586,4 +617,3 @@ const CameraIcon = ({ className, size }: { className?: string, size?: number }) 
     <circle cx="12" cy="13" r="3"/>
   </svg>
 );
-

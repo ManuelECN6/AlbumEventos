@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
-import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Pencil, Check, X as XIcon, LogOut, FolderPlus, Folder, Users, Search, Video, Grid, Eye, EyeOff, Lock, Link as LinkIcon, Copy, RefreshCw, UserCheck, ExternalLink, Menu, Maximize2, Calendar, Clock, CheckSquare, Square, UserPlus, Mail, BadgeCheck, AlertCircle, Palette, Upload, Type, Cloud, FileText, QrCode, Download, Loader2, HelpCircle, PieChart, Camera, PlayCircle, RotateCcw, Trash2, Filter, AlertTriangle, UserX, Heart, ImageIcon, Sliders, Droplet, Zap, User, CheckCircle, Info, Smartphone, Monitor } from 'lucide-react';
+import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Video, Grid, Eye, EyeOff, Lock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Smartphone, Heart, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera } from 'lucide-react';
 import { uploadFileToFirebase } from '../services/firebaseService';
 import { GoogleDriveImporter } from './GoogleDriveImporter';
 import QRCode from "react-qr-code";
@@ -37,11 +38,12 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     photos: [],
     categories: [{ id: 'c1', name: 'General', color: '#3b82f6' }],
     allowUploads: true,
-    allowDownloads: false, // Default Disabled
+    allowDownloads: false, 
     allowedMediaTypes: ['photo'],
     storageLimit: 100,
     maxPhotosPerPerson: 25,
     maxVideosPerPerson: 5,
+    maxVideoSizeMB: 50,
     clientName: 'Cliente Nuevo',
     downloadPassword: Math.random().toString(36).slice(-6),
     publicToken: '',
@@ -87,7 +89,7 @@ const hexToRgba = (hex: string, alpha: number) => {
     return hex;
 };
 
-// --- OPTIMIZED COLOR PICKER COMPONENT ---
+// --- COMPONENTE COLOR PICKER ---
 const ColorPicker = ({ label, value, onChange, fallback }: { label: string, value?: string, onChange: (val: string) => void, fallback: string }) => {
     const [internalColor, setInternalColor] = useState(value || fallback);
 
@@ -104,8 +106,7 @@ const ColorPicker = ({ label, value, onChange, fallback }: { label: string, valu
       <div className="flex flex-col">
           <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-wider">{label}</label>
           <div className="flex flex-col gap-3">
-              {/* Main Color Swatch / Picker */}
-              <div className="relative w-full h-14 rounded-xl border-2 border-gray-200 shadow-sm overflow-hidden cursor-pointer group hover:border-[#4f46e5] transition-colors bg-white">
+              <div className="relative w-full h-12 rounded-xl border-2 border-gray-200 shadow-sm overflow-hidden cursor-pointer group hover:border-[#4f46e5] transition-colors bg-white">
                    <input 
                       type="color" 
                       value={internalColor}
@@ -118,8 +119,6 @@ const ColorPicker = ({ label, value, onChange, fallback }: { label: string, valu
                       style={{ backgroundColor: internalColor }}
                   />
               </div>
-
-              {/* Hex Code Input - Below */}
               <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-mono font-bold">#</span>
                   <input 
@@ -131,16 +130,188 @@ const ColorPicker = ({ label, value, onChange, fallback }: { label: string, valu
                               const hex = '#' + val;
                               if (val.length === 3 || val.length === 6) {
                                   handleChange(hex);
+                              } else {
+                                  setInternalColor('#' + val); 
                               }
                           }
                       }}
                       maxLength={6}
-                      className="w-full pl-7 pr-3 py-2.5 text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4f46e5] focus:border-[#4f46e5] outline-none font-mono text-gray-700 font-bold tracking-wide transition-all shadow-sm"
+                      className="w-full pl-7 pr-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4f46e5] focus:border-[#4f46e5] outline-none font-mono text-gray-700 font-bold tracking-wide transition-all shadow-sm"
                       placeholder="HEX"
                   />
               </div>
           </div>
       </div>
+    );
+};
+
+// --- LIVE PREVIEW REALISTA (1:1 Con App.tsx) ---
+const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePhotos: Photo[] }) => {
+    const theme = config.theme || DEFAULT_EVENT_TEMPLATE.theme!;
+    const fontClass = theme.fontFamily === 'serif' ? 'font-serif' : 'font-sans';
+    
+    const previewPhotos = activePhotos.length > 0 ? activePhotos.slice(0, 4) : [
+        { id: '1', thumbnail: 'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=400', author: { name: 'Ana', initials: 'AN', avatarColor: '#3b82f6' }, likes: 12, category: 'General', createdAt: new Date().toISOString(), title: 'Ejemplo' },
+        { id: '2', thumbnail: 'https://images.unsplash.com/photo-1511285560982-1351cdeb9821?w=400', author: { name: 'Luis', initials: 'LU', avatarColor: '#ef4444' }, likes: 8, category: 'General', createdAt: new Date().toISOString(), title: 'Ejemplo' }
+    ];
+
+    const statsColor = theme.statsTextColor || theme.textColor;
+    const confirmedCount = config.participants ? config.participants.filter(p => p.status === 'confirmed').length : 0;
+    const remaining = Math.max(0, config.participantsCount - confirmedCount);
+
+    return (
+        <div className="sticky top-8 mx-auto w-[300px] h-[600px] bg-gray-900 rounded-[3rem] border-[8px] border-gray-900 shadow-2xl overflow-hidden flex flex-col select-none ring-4 ring-gray-200">
+            {/* Notch & Status Bar */}
+            <div className="h-7 bg-black w-full flex items-center justify-between px-6 z-30 shrink-0 absolute top-0 left-0 right-0 rounded-t-[2.5rem]">
+                <span className="text-[10px] text-white font-medium pl-2">9:41</span>
+                <div className="w-16 h-4 bg-black rounded-b-xl absolute left-1/2 -translate-x-1/2 top-0"></div>
+                <div className="flex gap-1 pr-2">
+                    <div className="w-3 h-3 bg-white rounded-full opacity-90"></div>
+                </div>
+            </div>
+
+            {/* App Content Container */}
+            <div 
+                className={`flex-1 overflow-y-auto overflow-x-hidden flex flex-col relative ${fontClass} custom-scrollbar`}
+                style={{ backgroundColor: theme.backgroundColor, color: theme.textColor }}
+            >
+                {/* --- HEADER SECTION (Copied logic from App.tsx) --- */}
+                <div className="relative mb-4 shrink-0">
+                    {/* Cover Image */}
+                    <div className="absolute inset-0 z-0 overflow-hidden h-full w-full">
+                         {config.coverImage ? (
+                             <img 
+                                src={config.coverImage} 
+                                className="w-full h-full object-cover" 
+                                style={{ 
+                                    objectPosition: `50% ${theme.coverImagePositionY}%`,
+                                    filter: `blur(${theme.coverBlur}px)` 
+                                }}
+                             />
+                         ) : (
+                             <div className="w-full h-full bg-gray-300"></div>
+                         )}
+                         <div 
+                            className="absolute inset-0 z-0" 
+                            style={{ backgroundColor: hexToRgba(theme.coverOverlayColor || '#000000', theme.coverOverlayOpacity ?? 0.4) }}
+                        />
+                    </div>
+
+                    {/* Content */}
+                    <div className={`relative z-10 pt-10 pb-4 px-4 ${config.coverImage ? '' : 'pt-10'}`}>
+                        <div className="flex flex-col items-start gap-3">
+                            {/* Avatar */}
+                            {theme.avatarImage ? (
+                                <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/20 shadow-sm shrink-0">
+                                    <img src={theme.avatarImage} className="w-full h-full object-cover" />
+                                </div>
+                            ) : (
+                                <div 
+                                    className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold shadow-sm shrink-0 uppercase border-2 border-white/20"
+                                    style={{ backgroundColor: theme.avatarBackgroundColor, color: theme.avatarTextColor }}
+                                >
+                                    {config.title.substring(0, 2)}
+                                </div>
+                            )}
+
+                            <div>
+                                <h1 className="text-xl font-bold leading-tight mb-1" style={{ color: theme.headerTitleColor || theme.textColor }}>
+                                    {config.title}
+                                </h1>
+                                <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                                    <div className="flex items-center gap-1" style={{ color: theme.headerDateColor || theme.textColor }}>
+                                        <User size={10} />
+                                        <span>{config.subtitle}</span>
+                                    </div>
+                                    <span className="opacity-50">•</span>
+                                    <div className="flex items-center gap-1" style={{ color: theme.headerDateColor || theme.textColor }}>
+                                        <Calendar size={10} />
+                                        <span>{config.date}</span>
+                                    </div>
+                                </div>
+
+                                {/* Stats */}
+                                <div className="flex items-center gap-3 mt-3 text-[8px] font-bold uppercase tracking-wide" style={{ color: statsColor }}>
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-xs leading-none">{previewPhotos.length}</span>
+                                        <span>Fotos</span>
+                                    </div>
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-xs leading-none">{previewPhotos.reduce((a, b) => a + b.likes, 0)}</span>
+                                        <span>Likes</span>
+                                    </div>
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-xs leading-none">{confirmedCount}</span>
+                                        <span>Invitados</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2 w-full mt-4">
+                            {config.allowUploads && (
+                                <div className="flex-1 flex items-center justify-center gap-1 py-2 rounded-full font-medium shadow-md text-[10px]" style={{ backgroundColor: theme.primaryColor, color: theme.primaryTextColor }}>
+                                    <Camera size={12} /> Subir
+                                </div>
+                            )}
+                            <div className="flex-1 flex items-center justify-center gap-1 py-2 rounded-full font-medium shadow-md text-[10px]" style={{ backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor }}>
+                                <Download size={12} /> Bajar
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* --- MAIN PHOTO GRID (Copied logic from App.tsx) --- */}
+                <div className="px-3 pb-4">
+                    <div className="grid grid-cols-1 gap-4">
+                        {previewPhotos.map((photo) => (
+                            <div 
+                                key={photo.id} 
+                                className="rounded-lg shadow-sm border overflow-hidden"
+                                style={{ 
+                                    backgroundColor: theme.cardBackgroundColor || '#ffffff',
+                                    borderColor: 'rgba(0,0,0,0.05)'
+                                }}
+                            >
+                                {/* Card Header */}
+                                <div className="p-2 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: photo.author.avatarColor, color: '#fff' }}>
+                                            {photo.author.initials}
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-[10px]" style={{ color: theme.cardTextColor }}>{photo.author.name}</h3>
+                                            <p className="text-[8px] opacity-80" style={{ color: theme.cardTextColor }}>Hace un momento</p>
+                                        </div>
+                                    </div>
+                                    <Flag size={10} className="opacity-30" style={{ color: theme.cardTextColor }} />
+                                </div>
+
+                                {/* Image */}
+                                <div className="bg-gray-100 aspect-[4/3] relative overflow-hidden">
+                                     <img src={photo.thumbnail} className="w-full h-full object-cover" />
+                                     <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-sm text-white text-[8px] px-1.5 py-0.5 rounded uppercase font-bold">
+                                         {photo.category}
+                                     </div>
+                                </div>
+
+                                {/* Footer */}
+                                <div className="p-2 border-t" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
+                                    <div className="flex items-center gap-1 text-[10px] font-medium" style={{ color: theme.cardTextColor }}>
+                                        <Heart size={12} />
+                                        <span>{photo.likes}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+            
+            {/* Home Indicator */}
+            <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-20 h-1 bg-white/30 rounded-full z-40"></div>
+        </div>
     );
 };
 
@@ -165,17 +336,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onDriveImport, 
   onExit 
 }) => {
-  // Find the active event object
   const activeEvent = events?.find(e => e.id === currentEventId) || events?.[0] || DEFAULT_EVENT_TEMPLATE;
 
-  // Local state for the form
   const [localConfig, setLocalConfig] = useState<EventConfig>({ ...activeEvent });
   const [activeTab, setActiveTab] = useState<'general' | 'categories' | 'gallery' | 'clients' | 'participants' | 'appearance'>('general');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Gallery View Mode
   const [galleryView, setGalleryView] = useState<'active' | 'archived' | 'trash'>('active');
-  const [filterParticipantId, setFilterParticipantId] = useState<string | null>(null);
 
   // Upload State
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
@@ -183,40 +351,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Preview Modal State
   const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null);
-  const [isDeletingPhoto, setIsDeletingPhoto] = useState(false);
-  
-  // Delete Confirmation Modal State (Event)
-  const [showDeleteEventConfirm, setShowDeleteEventConfirm] = useState(false);
-
-  // Delete Confirmation Modal State (Participant)
-  const [participantToDelete, setParticipantToDelete] = useState<Participant | null>(null);
-  // Delete Confirmation Modal State (Photo)
   const [photoToDelete, setPhotoToDelete] = useState<Photo | null>(null);
   
-  // Bulk Delete Confirmation State
+  // Delete Confirmation
+  const [showDeleteEventConfirm, setShowDeleteEventConfirm] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   
-  // Bulk Selection State
+  // Bulk Selection
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Feedback State
+  // Feedback
   const [isLinkCopied, setIsLinkCopied] = useState(false);
 
-  // Participants State
+  // Inputs
   const [newParticipantName, setNewParticipantName] = useState('');
   const [participantSearch, setParticipantSearch] = useState('');
-
-  // Category State
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#3b82f6');
 
-  // Update local form state when the selected event changes
+  // Sync local state when active event changes
   useEffect(() => {
-    // Solo limpiar selección si cambiamos de álbum (ID distinto), no en updates del mismo
     if (activeEvent?.id !== localConfig?.id) {
         setSelectedIds([]); 
     }
-    setLocalConfig({ ...activeEvent });
+    // Deep merge to ensure theme object exists
+    setLocalConfig({ 
+        ...activeEvent,
+        theme: { ...DEFAULT_EVENT_TEMPLATE.theme, ...activeEvent.theme }
+    });
   }, [activeEvent]);
 
   const handleSave = () => {
@@ -244,10 +406,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             status: 'confirmed',
             addedAt: new Date().toISOString().split('T')[0]
         };
-        // Actualizamos local y también campo directo
         const updatedParticipants = [...(localConfig.participants || []), newParticipant];
         setLocalConfig(prev => ({ ...prev, participants: updatedParticipants }));
-        // Optimización: Guardar inmediatamente el participante
         onUpdateField('participants', updatedParticipants);
         setNewParticipantName('');
     }
@@ -262,38 +422,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const getParticipantContent = (participant: Participant) => {
+      // IMPORTANTE: Usamos currentEventPhotos que viene de App.tsx (Subcolección + Legacy)
       const sourcePhotos = currentEventPhotos || [];
       const content = sourcePhotos.filter(photo => 
           !photo.isDeleted && isContentOwnedBy(photo, participant)
       );
-      const photosCount = content.filter(p => p.type !== 'video').length;
-      const videosCount = content.filter(p => p.type === 'video').length;
-      const previews = content.slice(0, 4).map(p => ({
-          id: p.id,
-          thumbnail: p.thumbnail,
-          type: p.type
-      }));
-      return { photosCount, videosCount, previews, total: content.length };
+      return { total: content.length };
   };
 
   const handleBannerChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      if (!activeEvent.id) {
-          alert("Error: ID de evento no válido.");
-          return;
-      }
+      if (!activeEvent.id) return;
       setIsUploadingBanner(true);
       const file = e.target.files[0];
       try {
         const timestamp = Date.now();
         const sanitizedName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
         const path = `eventos/${activeEvent.id}/assets/banner_${timestamp}_${sanitizedName}`;
-        
         const url = await uploadFileToFirebase(file, path);
+        
+        // Update local and remote
         setLocalConfig(prev => ({ ...prev, coverImage: url }));
         onUpdateField('coverImage', url);
       } catch (error) {
-        console.error("Error subiendo portada:", error);
         alert("Error al subir la imagen.");
       } finally {
         setIsUploadingBanner(false);
@@ -303,24 +454,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      if (!activeEvent.id) {
-          alert("Error: ID de evento no válido.");
-          return;
-      }
+      if (!activeEvent.id) return;
       setIsUploadingAvatar(true);
       const file = e.target.files[0];
       try {
         const timestamp = Date.now();
         const sanitizedName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
         const path = `eventos/${activeEvent.id}/assets/avatar_${timestamp}_${sanitizedName}`;
-        
         const url = await uploadFileToFirebase(file, path);
+        
         const currentTheme = localConfig.theme || DEFAULT_EVENT_TEMPLATE.theme!;
         const updatedTheme = { ...currentTheme, avatarImage: url };
         setLocalConfig(prev => ({ ...prev, theme: updatedTheme }));
         onUpdateField('theme', updatedTheme);
       } catch (error) {
-        console.error("Error subiendo avatar:", error);
         alert("Error al subir el avatar.");
       } finally {
         setIsUploadingAvatar(false);
@@ -331,12 +478,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleDownloadQR = () => {
       const svg = document.getElementById("qr-code-svg");
       if (!svg) return;
-      
       const svgData = new XMLSerializer().serializeToString(svg);
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
       const img = new window.Image();
-      
       img.onload = () => {
           canvas.width = img.width;
           canvas.height = img.height;
@@ -347,7 +492,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           downloadLink.href = pngFile;
           downloadLink.click();
       };
-      
       img.src = "data:image/svg+xml;base64," + btoa(svgData);
   };
 
@@ -359,10 +503,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             color: newCategoryColor
         };
         const updatedCats = [...localConfig.categories, newCat];
-        setLocalConfig(prev => ({
-            ...prev,
-            categories: updatedCats
-        }));
+        setLocalConfig(prev => ({ ...prev, categories: updatedCats }));
         onUpdateField('categories', updatedCats);
         setNewCategoryName('');
         setNewCategoryColor('#3b82f6'); 
@@ -375,33 +516,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           return;
       }
       const updatedCats = localConfig.categories.filter(c => c.id !== id);
-      setLocalConfig(prev => ({
-          ...prev,
-          categories: updatedCats
-      }));
+      setLocalConfig(prev => ({ ...prev, categories: updatedCats }));
       onUpdateField('categories', updatedCats);
   };
 
-  // --- BULK SELECTION HELPERS ---
-  const displayedPhotos = currentEventPhotos.filter(p => {
+  // --- FILTRADO DE FOTOS ---
+  const displayedPhotos = (currentEventPhotos || []).filter(p => {
       if (galleryView === 'trash') return p.isDeleted;
       if (galleryView === 'archived') return p.isArchived && !p.isDeleted;
       return !p.isDeleted && !p.isArchived;
-  }).filter(p => !filterParticipantId || isContentOwnedBy(p, { id: filterParticipantId } as Participant));
+  });
 
   const toggleSelectAll = () => {
-      const targetPhotos = displayedPhotos;
-      const targetIds = targetPhotos.map(p => p.id);
-      const allVisibleSelected = targetPhotos.length > 0 && targetPhotos.every(p => selectedIds.includes(p.id));
-      if (allVisibleSelected) {
+      const targetIds = displayedPhotos.map(p => p.id);
+      const allSelected = targetIds.length > 0 && targetIds.every(id => selectedIds.includes(id));
+      if (allSelected) {
           setSelectedIds(prev => prev.filter(id => !targetIds.includes(id)));
       } else {
           setSelectedIds(prev => Array.from(new Set([...prev, ...targetIds])));
       }
-  };
-  
-  const toggleSelection = (id: string) => {
-      setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
   
   const executeBulkDelete = async () => {
@@ -415,30 +548,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden font-sans">
-      <aside className="w-64 bg-gray-900 text-gray-300 flex flex-col shadow-2xl z-20 shrink-0">
+    <div className="flex h-screen bg-gray-100 overflow-hidden font-sans text-gray-800">
+      
+      {/* SIDEBAR */}
+      <aside className="w-72 bg-gray-900 text-gray-300 flex flex-col shadow-2xl z-30 shrink-0">
         <div className="p-6 border-b border-gray-800">
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Settings className="text-[#4f46e5]" />
             Admin Panel
           </h2>
-          <p className="text-xs text-gray-500 mt-1 tracking-wider uppercase">Gestor de Eventos</p>
+          <p className="text-[10px] text-gray-500 mt-1 tracking-wider uppercase">Gestor de Eventos</p>
         </div>
 
         <div className="p-4 border-b border-gray-800">
             <button 
                 onClick={onCreateEvent}
-                className="w-full bg-[#4f46e5] hover:bg-[#4338ca] text-white p-3 rounded-lg flex items-center justify-center gap-2 mb-4 transition-all shadow-lg shadow-indigo-900/20 font-bold"
+                className="w-full bg-[#4f46e5] hover:bg-[#4338ca] text-white p-3 rounded-lg flex items-center justify-center gap-2 mb-4 transition-all shadow-lg shadow-indigo-900/20 font-bold text-sm"
             >
-                <Plus size={18} /> Crear Nuevo Álbum
+                <Plus size={16} /> Crear Nuevo Álbum
             </button>
-
             <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
                 <input 
                     type="text" 
                     placeholder="Buscar evento..." 
-                    className="w-full bg-gray-800 text-white pl-9 pr-3 py-2 rounded-lg text-sm border border-gray-700 focus:border-[#4f46e5] outline-none transition-colors"
+                    className="w-full bg-gray-800 text-white pl-9 pr-3 py-2 rounded-lg text-xs border border-gray-700 focus:border-[#4f46e5] outline-none transition-colors"
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
             </div>
@@ -446,20 +580,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         <nav className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
             <div>
-                <h3 className="text-xs font-bold text-gray-500 uppercase mb-3 px-2">Mis Álbumes ({events?.length || 0})</h3>
+                <h3 className="text-[10px] font-bold text-gray-500 uppercase mb-3 px-2 tracking-widest">Mis Álbumes ({events?.length || 0})</h3>
                 <ul className="space-y-1">
-                    {events?.filter(e => e.title.toLowerCase().includes(searchTerm.toLowerCase()) || e.clientName?.toLowerCase().includes(searchTerm.toLowerCase())).map(event => (
+                    {events?.filter(e => e.title.toLowerCase().includes(searchTerm.toLowerCase())).map(event => (
                     <li key={event.id}>
                         <button
                         onClick={() => onSelectEvent(event.id)}
-                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all ${currentEventId === event.id ? 'bg-gray-800 text-white shadow-md border-l-4 border-[#4f46e5]' : 'hover:bg-gray-800/50 hover:text-white'}`}
+                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all ${currentEventId === event.id ? 'bg-gray-800 text-white border-l-4 border-[#4f46e5]' : 'hover:bg-gray-800/50 hover:text-white'}`}
                         >
-                         <Folder size={18} className={currentEventId === event.id ? 'text-[#4f46e5]' : 'text-gray-500'} />
+                         <Folder size={16} className={currentEventId === event.id ? 'text-[#4f46e5]' : 'text-gray-500'} />
                          <div className="text-left truncate">
                              <span className="block font-medium text-sm truncate">{event.title}</span>
-                             <span className="block text-xs text-gray-500 flex items-center gap-1">
-                                 <User size={10} /> {event.clientName}
-                             </span>
+                             <span className="block text-[10px] text-gray-500">{event.clientName}</span>
                          </div>
                         </button>
                     </li>
@@ -469,8 +601,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
             {currentEventId && (
                 <div>
-                    <h3 className="text-xs font-bold text-gray-500 uppercase mb-3 px-2 mt-4 border-t border-gray-800 pt-4">
-                        Editando: <span className="text-white">{activeEvent?.title}</span>
+                    <h3 className="text-[10px] font-bold text-gray-500 uppercase mb-3 px-2 mt-4 border-t border-gray-800 pt-4 tracking-widest">
+                        Configuración
                     </h3>
                     <ul className="space-y-1">
                         {[
@@ -484,7 +616,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <li key={item.id}>
                                 <button
                                     onClick={() => setActiveTab(item.id as any)}
-                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm ${activeTab === item.id ? 'bg-[#4f46e5] text-white font-bold shadow-lg' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm ${activeTab === item.id ? 'bg-[#4f46e5] text-white font-bold' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
                                 >
                                     <item.icon size={18} />
                                     {item.label}
@@ -497,32 +629,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </nav>
         
         <div className="p-4 border-t border-gray-800">
-            <button onClick={onExit} className="w-full flex items-center gap-2 text-gray-500 hover:text-white transition-colors text-sm px-2">
-                <ArrowLeft size={16} /> Ver Frontend Cliente
+            <button onClick={onExit} className="w-full flex items-center gap-2 text-gray-500 hover:text-white transition-colors text-xs px-2">
+                <ArrowLeft size={14} /> Volver al Sitio
             </button>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto relative bg-gray-50">
-        <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shadow-sm">
+      {/* MAIN CONTENT */}
+      <main className="flex-1 overflow-y-auto relative bg-gray-50 flex flex-col">
+        {/* Top Bar */}
+        <header className="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shadow-sm">
             <div>
                 <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                    {activeTab === 'general' && 'Vista Previa & Gestión'}
-                    {activeTab === 'appearance' && 'Personalización'}
-                    {activeTab === 'categories' && 'Gestión de Categorías'}
-                    {activeTab === 'gallery' && 'Gestión de Imágenes'}
-                    {activeTab === 'clients' && 'Gestión de Cliente'}
-                    {activeTab === 'participants' && 'Lista de Participantes'}
+                    {activeTab === 'general' && 'Configuración General'}
+                    {activeTab === 'appearance' && 'Personalización y Marca'}
+                    {activeTab === 'categories' && 'Categorías del Evento'}
+                    {activeTab === 'gallery' && 'Gestión de Contenido'}
+                    {activeTab === 'clients' && 'Acceso del Cliente'}
+                    {activeTab === 'participants' && 'Lista de Invitados'}
                 </h1>
-                <p className="text-gray-500 text-sm">Editando álbum: {activeEvent?.title}</p>
+                <p className="text-gray-500 text-sm">Editando: {activeEvent?.title}</p>
             </div>
             <div className="flex gap-3">
                 {activeTab === 'general' && (
                    <button 
                         onClick={() => setShowDeleteEventConfirm(true)}
-                        className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
+                        className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg font-bold transition-colors flex items-center gap-2 text-sm"
                     >
-                        <Trash2 size={16} /> Eliminar Álbum
+                        <Trash2 size={16} /> Eliminar
                    </button>
                 )}
                 <button 
@@ -535,127 +669,394 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
         </header>
 
-        <div className="p-8 max-w-7xl mx-auto">
+        <div className="p-8 max-w-7xl mx-auto w-full">
+          
+          {/* --- TAB: APPEARANCE (CON LIVE PREVIEW Y COLOR PICKER ORIGINAL) --- */}
           {activeTab === 'appearance' && (
-             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-7 space-y-6">
+             <div className="flex flex-col lg:flex-row gap-8 items-start">
+                
+                {/* Left Column: Controls */}
+                <div className="flex-1 space-y-6 w-full max-w-4xl">
+                    {/* Header Image */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
-                            <ImageIcon className="text-[#4f46e5]" />
-                            Cabecera & Branding
+                            <Image className="text-[#4f46e5]" /> Portada
                         </h3>
-                        <div className="space-y-6">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Imagen de Portada</label>
-                                <div className="relative group border-2 border-dashed border-gray-300 rounded-xl p-1 hover:border-[#4f46e5] transition-colors bg-gray-50">
-                                    {localConfig.coverImage ? (
-                                        <div className="relative h-48 rounded-lg overflow-hidden">
-                                            <img 
-                                                src={localConfig.coverImage} 
-                                                className="w-full h-full object-cover" 
-                                                alt="Cover" 
-                                                style={{ 
-                                                    objectPosition: `50% ${localConfig.theme?.coverImagePositionY || 50}%`,
-                                                    filter: `blur(${localConfig.theme?.coverBlur || 0}px)` 
-                                                }}
-                                            />
-                                            <div 
-                                                className="absolute inset-0 pointer-events-none transition-colors duration-200"
-                                                style={{ backgroundColor: hexToRgba(localConfig.theme?.coverOverlayColor || '#000000', localConfig.theme?.coverOverlayOpacity ?? 0.4) }}
-                                            />
-                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-20">
-                                                 <label className="cursor-pointer bg-white text-gray-800 px-4 py-2 rounded-full font-bold text-sm hover:scale-105 transition-transform shadow-lg">
-                                                    Cambiar Imagen
-                                                    <input type="file" className="hidden" onChange={handleBannerChange} accept="image/*" />
-                                                 </label>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <label className="flex flex-col items-center justify-center h-48 cursor-pointer hover:bg-gray-100 rounded-lg transition-colors">
-                                            {isUploadingBanner ? <Loader2 className="animate-spin text-[#4f46e5]" size={32} /> : <Image size={32} className="text-gray-400 mb-2" />}
-                                            <span className="text-sm text-gray-500 font-medium">Clic para subir imagen</span>
+                        <div className="relative group border-2 border-dashed border-gray-300 rounded-xl p-1 hover:border-[#4f46e5] transition-colors bg-gray-50 h-48">
+                            {localConfig.coverImage ? (
+                                <div className="relative h-full rounded-lg overflow-hidden">
+                                    <img 
+                                        src={localConfig.coverImage} 
+                                        className="w-full h-full object-cover" 
+                                        style={{ 
+                                            objectPosition: `50% ${localConfig.theme?.coverImagePositionY || 50}%`,
+                                            filter: `blur(${localConfig.theme?.coverBlur || 0}px)` 
+                                        }}
+                                    />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-20">
+                                            <label className="cursor-pointer bg-white text-gray-800 px-4 py-2 rounded-full font-bold text-sm hover:scale-105 transition-transform shadow-lg">
+                                            Cambiar Imagen
                                             <input type="file" className="hidden" onChange={handleBannerChange} accept="image/*" />
-                                        </label>
-                                    )}
+                                            </label>
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <label className="flex flex-col items-center justify-center h-full cursor-pointer">
+                                    {isUploadingBanner ? <Loader2 className="animate-spin text-[#4f46e5]" size={32} /> : <Upload size={32} className="text-gray-400 mb-2" />}
+                                    <span className="text-sm text-gray-500 font-medium">Subir Portada</span>
+                                    <input type="file" className="hidden" onChange={handleBannerChange} accept="image/*" />
+                                </label>
+                            )}
                         </div>
+                        <div className="mt-4">
+                            <label className="text-xs font-bold text-gray-500 uppercase block mb-2">Posición Vertical (%)</label>
+                            <input 
+                                type="range" 
+                                min="0" 
+                                max="100" 
+                                value={localConfig.theme?.coverImagePositionY || 50} 
+                                onChange={(e) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, coverImagePositionY: Number(e.target.value) } }))}
+                                className="w-full accent-[#4f46e5]"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Colors */}
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
+                            <Palette className="text-[#4f46e5]" /> Colores Principales
+                         </h3>
+                         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                            <ColorPicker label="Fondo" value={localConfig.theme?.backgroundColor} onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, backgroundColor: c } }))} fallback="#f5f0e6"/>
+                            <ColorPicker label="Texto" value={localConfig.theme?.textColor} onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, textColor: c } }))} fallback="#1f2937"/>
+                            <ColorPicker label="Primario" value={localConfig.theme?.primaryColor} onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, primaryColor: c } }))} fallback="#a87b51"/>
+                            <ColorPicker label="Secundario" value={localConfig.theme?.secondaryColor} onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, secondaryColor: c } }))} fallback="#4f46e5"/>
+                         </div>
+                    </div>
+                    
+                    {/* Header Colors */}
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
+                            <Type className="text-[#4f46e5]" /> Colores de Texto (Encabezado)
+                         </h3>
+                         <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                            <ColorPicker 
+                                label="Título Principal" 
+                                value={localConfig.theme?.headerTitleColor} 
+                                onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, headerTitleColor: c } }))} 
+                                fallback="#1f2937"
+                            />
+                            <ColorPicker 
+                                label="Fecha y Subtítulo" 
+                                value={localConfig.theme?.headerDateColor} 
+                                onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, headerDateColor: c } }))} 
+                                fallback="#6b7280"
+                            />
+                             <ColorPicker 
+                                label="Estadísticas" 
+                                value={localConfig.theme?.statsTextColor} 
+                                onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, statsTextColor: c } }))} 
+                                fallback="#6b7280"
+                            />
+                         </div>
+                    </div>
+
+                    {/* Typography & Avatar */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                             <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                 <Type className="text-[#4f46e5]" /> Tipografía
+                             </h3>
+                             <div className="flex flex-col gap-3">
+                                 <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${localConfig.theme?.fontFamily === 'sans' ? 'border-[#4f46e5] bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                                     <input type="radio" name="fontFamily" checked={localConfig.theme?.fontFamily === 'sans'} onChange={() => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, fontFamily: 'sans' } }))} className="hidden" />
+                                     <div className="font-sans">
+                                         <span className="block font-bold">Sans Serif</span>
+                                         <span className="text-xs text-gray-500">Moderno (Lato)</span>
+                                     </div>
+                                     {localConfig.theme?.fontFamily === 'sans' && <Check size={16} className="ml-auto text-[#4f46e5]" />}
+                                 </label>
+                                 <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${localConfig.theme?.fontFamily === 'serif' ? 'border-[#4f46e5] bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                                     <input type="radio" name="fontFamily" checked={localConfig.theme?.fontFamily === 'serif'} onChange={() => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, fontFamily: 'serif' } }))} className="hidden" />
+                                     <div className="font-serif">
+                                         <span className="block font-bold">Serif</span>
+                                         <span className="text-xs text-gray-500">Elegante (Playfair)</span>
+                                     </div>
+                                     {localConfig.theme?.fontFamily === 'serif' && <Check size={16} className="ml-auto text-[#4f46e5]" />}
+                                 </label>
+                             </div>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                             <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                 <Users className="text-[#4f46e5]" /> Avatar
+                             </h3>
+                             <div className="flex gap-4 items-center">
+                                 <div className="w-20 h-20 rounded-full border border-gray-200 overflow-hidden relative group shrink-0">
+                                      {localConfig.theme?.avatarImage ? (
+                                         <img src={localConfig.theme.avatarImage} className="w-full h-full object-cover" />
+                                      ) : (
+                                         <div className="w-full h-full flex items-center justify-center font-bold text-xl" style={{ backgroundColor: localConfig.theme?.avatarBackgroundColor, color: localConfig.theme?.avatarTextColor }}>
+                                             {localConfig.title.substring(0,2)}
+                                         </div>
+                                      )}
+                                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                                           <label className="cursor-pointer text-white"><Upload size={20} /><input type="file" className="hidden" onChange={handleAvatarChange} /></label>
+                                      </div>
+                                 </div>
+                                 <div className="flex-1 space-y-2">
+                                      <ColorPicker label="Fondo" value={localConfig.theme?.avatarBackgroundColor} onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, avatarBackgroundColor: c } }))} fallback="#374151"/>
+                                 </div>
+                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right Column: Live Preview */}
+                <div className="hidden xl:block w-[350px] shrink-0">
+                    <div className="sticky top-24 flex justify-center">
+                        <MobilePreview config={localConfig} activePhotos={currentEventPhotos || []} />
                     </div>
                 </div>
              </div>
           )}
           
+          {/* --- TAB: CATEGORIES --- */}
           {activeTab === 'categories' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-4 space-y-6">
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                        <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
-                            <Grid className="text-[#4f46e5]" />
-                            Nueva Categoría
-                        </h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">Nombre</label>
-                                <input 
-                                    type="text" 
-                                    value={newCategoryName}
-                                    onChange={(e) => setNewCategoryName(e.target.value)}
-                                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none transition-all"
-                                />
-                            </div>
-                            <div>
-                                <ColorPicker 
-                                    label="Color" 
-                                    value={newCategoryColor} 
-                                    onChange={setNewCategoryColor}
-                                    fallback="#3b82f6"
-                                />
-                            </div>
-                            <button 
-                                onClick={handleAddCategory}
-                                disabled={!newCategoryName.trim()}
-                                className="w-full py-3 bg-[#4f46e5] text-white rounded-lg font-bold shadow-md hover:bg-[#4338ca] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                            >
-                                <Plus size={18} /> Añadir Categoría
-                            </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
+                    <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
+                        <Plus className="text-[#4f46e5]" /> Añadir Categoría
+                    </h3>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">Nombre</label>
+                            <input 
+                                type="text" 
+                                value={newCategoryName}
+                                onChange={(e) => setNewCategoryName(e.target.value)}
+                                className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none"
+                                placeholder="Ej: Boda, Fiesta..."
+                            />
                         </div>
+                        <div>
+                            <ColorPicker label="Etiqueta" value={newCategoryColor} onChange={setNewCategoryColor} fallback="#3b82f6"/>
+                        </div>
+                        <button 
+                            onClick={handleAddCategory}
+                            disabled={!newCategoryName.trim()}
+                            className="w-full py-3 bg-[#4f46e5] text-white rounded-lg font-bold shadow-md hover:bg-[#4338ca] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Añadir
+                        </button>
                     </div>
                 </div>
-                <div className="lg:col-span-8">
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="divide-y divide-gray-100">
-                            {localConfig.categories.map((cat) => (
-                                <div key={cat.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors group">
-                                    <div className="flex items-center gap-4">
-                                        <div 
-                                            className="w-10 h-10 rounded-full shadow-sm border-2 border-white flex items-center justify-center text-white font-bold text-xs uppercase"
-                                            style={{ backgroundColor: cat.color }}
-                                        >
-                                            {cat.name.substring(0, 2)}
-                                        </div>
-                                        <p className="font-bold text-gray-800">{cat.name}</p>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <h3 className="text-lg font-bold text-gray-800 p-6 border-b border-gray-100">Categorías Activas</h3>
+                    <div className="divide-y divide-gray-100">
+                        {localConfig.categories.map((cat) => (
+                            <div key={cat.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-8 h-8 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-white font-bold text-xs" style={{ backgroundColor: cat.color }}>
+                                        {cat.name.substring(0, 2)}
                                     </div>
-                                    <button 
-                                        onClick={() => handleDeleteCategory(cat.id)}
-                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                    >
-                                        <Trash2 size={18} />
-                                    </button>
+                                    <p className="font-bold text-gray-800">{cat.name}</p>
                                 </div>
-                            ))}
-                        </div>
+                                <button onClick={() => handleDeleteCategory(cat.id)} className="p-2 text-gray-400 hover:text-red-500 rounded-lg"><Trash2 size={18} /></button>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
           )}
 
+          {/* --- TAB: GENERAL --- */}
+          {activeTab === 'general' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-6">
+                      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                           <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><FileText className="text-[#4f46e5]" /> Información</h3>
+                           <div className="space-y-4">
+                               <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Título</label>
+                                    <input type="text" value={localConfig.title} onChange={(e) => setLocalConfig({...localConfig, title: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">Fecha</label>
+                                        <input type="text" value={localConfig.date} onChange={(e) => setLocalConfig({...localConfig, date: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-700 mb-1">Token URL</label>
+                                        <input type="text" value={localConfig.publicToken} onChange={(e) => setLocalConfig({...localConfig, publicToken: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 mb-1">Subtítulo</label>
+                                    <input type="text" value={localConfig.subtitle} onChange={(e) => setLocalConfig({...localConfig, subtitle: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                </div>
+                           </div>
+                      </div>
+
+                      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                           <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><Lock className="text-[#4f46e5]" /> Accesos</h3>
+                           <div className="space-y-4">
+                               <div>
+                                   <label className="block text-sm font-bold text-gray-700 mb-1">Contraseña Descarga</label>
+                                   <div className="relative">
+                                       <input type="text" value={localConfig.downloadPassword} onChange={(e) => setLocalConfig({...localConfig, downloadPassword: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                       <button onClick={() => setLocalConfig({...localConfig, downloadPassword: Math.random().toString(36).slice(-6)})} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-gray-100 px-2 py-1 rounded font-bold">Generar</button>
+                                   </div>
+                               </div>
+                               <label className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                                   <div className="flex items-center gap-3">
+                                       <div className={`p-2 rounded-full ${localConfig.allowUploads ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{localConfig.allowUploads ? <Upload size={18} /> : <XIcon size={18} />}</div>
+                                       <div><span className="block font-bold text-sm">Permitir Subidas</span><span className="text-xs text-gray-500">Invitados pueden aportar</span></div>
+                                   </div>
+                                   <input type="checkbox" checked={localConfig.allowUploads} onChange={(e) => setLocalConfig({...localConfig, allowUploads: e.target.checked})} className="w-5 h-5 accent-[#4f46e5]" />
+                               </label>
+                               <label className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                                   <div className="flex items-center gap-3">
+                                       <div className={`p-2 rounded-full ${localConfig.allowDownloads ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{localConfig.allowDownloads ? <Download size={18} /> : <XIcon size={18} />}</div>
+                                       <div><span className="block font-bold text-sm">Permitir Descargas</span><span className="text-xs text-gray-500">Invitados pueden bajar fotos</span></div>
+                                   </div>
+                                   <input type="checkbox" checked={localConfig.allowDownloads} onChange={(e) => setLocalConfig({...localConfig, allowDownloads: e.target.checked})} className="w-5 h-5 accent-[#4f46e5]" />
+                               </label>
+                           </div>
+                      </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
+                       <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><HardDrive className="text-[#4f46e5]" /> Límites</h3>
+                       <div className="space-y-4">
+                           <div className="grid grid-cols-2 gap-4">
+                               <div>
+                                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Max MB Foto</label>
+                                   <input type="number" value={localConfig.storageLimit} onChange={(e) => setLocalConfig({...localConfig, storageLimit: Number(e.target.value)})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                               </div>
+                               <div>
+                                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Max MB Video</label>
+                                   <input type="number" value={localConfig.maxVideoSizeMB || 50} onChange={(e) => setLocalConfig({...localConfig, maxVideoSizeMB: Number(e.target.value)})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                               </div>
+                           </div>
+                           <div className="grid grid-cols-2 gap-4">
+                               <div>
+                                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Max Fotos/Persona</label>
+                                   <input type="number" value={localConfig.maxPhotosPerPerson} onChange={(e) => setLocalConfig({...localConfig, maxPhotosPerPerson: Number(e.target.value)})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                               </div>
+                               <div>
+                                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Max Videos/Persona</label>
+                                   <input type="number" value={localConfig.maxVideosPerPerson} onChange={(e) => setLocalConfig({...localConfig, maxVideosPerPerson: Number(e.target.value)})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                               </div>
+                           </div>
+                       </div>
+                  </div>
+              </div>
+          )}
+
+          {/* --- TAB: GALLERY --- */}
+          {activeTab === 'gallery' && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[calc(100vh-150px)]">
+                <div className="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4 shrink-0 bg-white z-20 sticky top-0">
+                    <div className="flex items-center bg-gray-100 p-1 rounded-lg">
+                        <button onClick={() => setGalleryView('active')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${galleryView === 'active' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Activa</button>
+                        <button onClick={() => setGalleryView('archived')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${galleryView === 'archived' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Ocultos</button>
+                        <button onClick={() => setGalleryView('trash')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${galleryView === 'trash' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-red-500'}`}>Papelera</button>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <GoogleDriveImporter onFilesSelected={onDriveImport} isProcessing={isProcessing} />
+                        {selectedIds.length > 0 && (
+                             <div className="flex items-center gap-2 animate-fade-in">
+                                 <span className="text-xs font-bold text-[#4f46e5] mr-2">{selectedIds.length} seleccionados</span>
+                                 {galleryView === 'trash' ? (
+                                     <>
+                                         <button onClick={() => onBulkRestore(selectedIds)} className="px-3 py-1.5 bg-green-50 text-green-600 rounded-md text-xs font-bold">Restaurar</button>
+                                         <button onClick={executeBulkDelete} className="px-3 py-1.5 bg-red-50 text-red-600 rounded-md text-xs font-bold">Eliminar</button>
+                                     </>
+                                 ) : (
+                                     <>
+                                         <button onClick={() => onBulkArchive(selectedIds, galleryView !== 'archived')} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-md text-xs font-bold">{galleryView === 'active' ? 'Ocultar' : 'Mostrar'}</button>
+                                         <button onClick={executeBulkDelete} className="px-3 py-1.5 bg-red-50 text-red-600 rounded-md text-xs font-bold">Papelera</button>
+                                     </>
+                                 )}
+                             </div>
+                        )}
+                        <button onClick={toggleSelectAll} className="text-gray-500 hover:text-[#4f46e5] flex items-center gap-2 text-sm font-medium px-2">
+                            {displayedPhotos.length > 0 && displayedPhotos.every(p => selectedIds.includes(p.id)) ? <><CheckSquare size={18} /> Todo</> : <><Square size={18} /> Todo</>}
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 bg-gray-50 custom-scrollbar">
+                    {displayedPhotos.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
+                             <Image size={64} className="mb-4" />
+                             <p>No hay imágenes en esta sección</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4">
+                            {displayedPhotos.map(photo => (
+                                <div key={photo.id} className={`relative group aspect-square rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${selectedIds.includes(photo.id) ? 'border-[#4f46e5] ring-2 ring-[#4f46e5]/20' : 'border-gray-200 hover:border-gray-300'}`} onClick={() => {
+                                    if(selectedIds.includes(photo.id)) setSelectedIds(prev => prev.filter(i => i !== photo.id));
+                                    else setSelectedIds(prev => [...prev, photo.id]);
+                                }}>
+                                    <div className={`absolute top-2 left-2 z-10 w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedIds.includes(photo.id) ? 'bg-[#4f46e5] border-[#4f46e5] text-white' : 'bg-white/80 border-gray-300'}`}>
+                                        {selectedIds.includes(photo.id) && <Check size={12} strokeWidth={4} />}
+                                    </div>
+                                    {photo.type === 'video' ? (
+                                        <video src={photo.thumbnail} className="w-full h-full object-cover" muted />
+                                    ) : (
+                                        <img src={photo.thumbnail} className="w-full h-full object-cover" loading="lazy" />
+                                    )}
+                                    <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                                        <button onClick={(e) => { e.stopPropagation(); setPreviewPhoto(photo); }} className="bg-white/90 hover:bg-white p-1.5 rounded-md shadow-sm"><Maximize2 size={14} /></button>
+                                        <button onClick={(e) => { e.stopPropagation(); setPhotoToDelete(photo); }} className="bg-white/90 hover:bg-white p-1.5 rounded-md shadow-sm text-red-500"><Trash2 size={14} /></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+          )}
+
+          {/* --- TAB: CLIENTS --- */}
+          {activeTab === 'clients' && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                  <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                      <UserCheck className="text-[#4f46e5]" /> Gestión de Cliente
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                      <div className="space-y-6">
+                          <div>
+                              <label className="block text-sm font-bold text-gray-700 mb-2">Nombre Cliente</label>
+                              <input type="text" value={localConfig.clientName} onChange={(e) => setLocalConfig({...localConfig, clientName: e.target.value})} className="w-full p-4 bg-gray-800 text-white rounded-xl border border-gray-700 focus:ring-2 focus:ring-[#4f46e5] outline-none font-medium text-lg" />
+                          </div>
+                          <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
+                              <h4 className="text-blue-800 font-bold flex items-center gap-2 mb-2"><ExternalLink size={18} /> Enlace Público</h4>
+                              <p className="text-blue-600/80 text-xs mb-3 break-all font-mono">{APP_URL}?event={activeEvent.publicToken || activeEvent.id}</p>
+                              <button onClick={() => {navigator.clipboard.writeText(`${APP_URL}?event=${activeEvent.publicToken || activeEvent.id}`); setIsLinkCopied(true); setTimeout(() => setIsLinkCopied(false), 2000);}} className={`bg-white border px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${isLinkCopied ? 'text-green-600 border-green-200 bg-green-50' : 'text-blue-600 border-blue-200 hover:bg-blue-50'}`}>{isLinkCopied ? <><Check size={18} /> ¡Copiado!</> : 'Copiar Enlace'}</button>
+                          </div>
+                      </div>
+                      <div className="bg-gray-50 p-8 rounded-xl border border-gray-200 flex flex-col items-center justify-center text-center">
+                           <div className="bg-white p-4 rounded-xl shadow-sm mb-6">
+                               <QRCode id="qr-code-svg" value={`${APP_URL}?event=${activeEvent.publicToken || activeEvent.id}`} size={180} level="H" />
+                           </div>
+                           <button onClick={handleDownloadQR} className="flex items-center gap-2 px-6 py-3 bg-white border border-gray-300 rounded-full text-gray-700 font-bold hover:bg-gray-100 transition-all shadow-sm">Descargar QR</button>
+                      </div>
+                  </div>
+              </div>
+          )}
+
+          {/* --- TAB: PARTICIPANTS --- */}
           {activeTab === 'participants' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 <div className="lg:col-span-4 space-y-6">
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                             <UserPlus className="text-[#4f46e5]" />
-                            Registrar Participante
+                            Registrar
                         </h3>
                         <div className="space-y-4">
                             <div>
@@ -664,30 +1065,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     type="text" 
                                     value={newParticipantName}
                                     onChange={(e) => setNewParticipantName(e.target.value)}
-                                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none transition-all"
+                                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none"
                                 />
                             </div>
-                            <button 
-                                onClick={addParticipant}
-                                disabled={!newParticipantName.trim()}
-                                className="w-full py-3 bg-[#4f46e5] text-white rounded-lg font-bold shadow-md hover:bg-[#4338ca] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                            >
-                                <Plus size={18} /> Añadir Manualmente
-                            </button>
+                            <button onClick={addParticipant} disabled={!newParticipantName.trim()} className="w-full py-3 bg-[#4f46e5] text-white rounded-lg font-bold shadow-md hover:bg-[#4338ca] transition-colors disabled:opacity-50">Añadir</button>
                         </div>
                     </div>
                 </div>
                 <div className="lg:col-span-8">
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                             <h3 className="font-bold text-gray-700">Lista de Participantes</h3>
-                             <input 
-                                    type="text" 
-                                    placeholder="Buscar..."
-                                    value={participantSearch}
-                                    onChange={(e) => setParticipantSearch(e.target.value)}
-                                    className="pl-3 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-[#4f46e5] outline-none"
-                                />
+                             <h3 className="font-bold text-gray-700">Participantes ({localConfig.participants?.length || 0})</h3>
+                             <input type="text" placeholder="Buscar..." value={participantSearch} onChange={(e) => setParticipantSearch(e.target.value)} className="pl-3 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-[#4f46e5] outline-none" />
                         </div>
                         <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto custom-scrollbar">
                             {localConfig.participants && localConfig.participants.length > 0 ? (
@@ -711,151 +1100,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     <span className="block text-sm font-bold text-gray-800">{stats.total}</span>
                                                     <span className="text-[10px] text-gray-500 uppercase">Fotos</span>
                                                 </div>
-                                                <button 
-                                                    onClick={() => {
+                                                <button onClick={() => {
                                                         const updated = localConfig.participants.filter(part => part.id !== p.id);
                                                         setLocalConfig(prev => ({ ...prev, participants: updated }));
                                                         onUpdateField('participants', updated);
-                                                    }}
-                                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                    }} className="p-2 text-gray-400 hover:text-red-500 rounded-lg"><Trash2 size={16} /></button>
                                             </div>
                                         </div>
                                     );
                                 })
-                            ) : (
-                                <div className="p-8 text-center text-gray-400">No hay participantes registrados.</div>
-                            )}
+                            ) : (<div className="p-8 text-center text-gray-400">No hay participantes registrados.</div>)}
                         </div>
                     </div>
                 </div>
             </div>
           )}
 
-          {activeTab === 'general' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                  <div className="lg:col-span-2 space-y-6">
-                      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                           <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                <FileText className="text-[#4f46e5]" />
-                                Información Básica
-                           </h3>
-                           <div className="space-y-4">
-                               <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
-                                    <input type="text" value={localConfig.title} onChange={(e) => setLocalConfig({...localConfig, title: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
-                                    <input type="text" value={localConfig.date} onChange={(e) => setLocalConfig({...localConfig, date: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
-                                </div>
-                           </div>
-                      </div>
-                  </div>
-              </div>
-          )}
-          
-          {activeTab === 'gallery' && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[calc(100vh-150px)]">
-                <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 bg-white z-20 sticky top-0">
-                    <div className="flex items-center bg-gray-100 p-1 rounded-lg w-full sm:w-auto">
-                        <button onClick={() => setGalleryView('active')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${galleryView === 'active' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Activa</button>
-                        <button onClick={() => setGalleryView('archived')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${galleryView === 'archived' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Ocultos</button>
-                        <button onClick={() => setGalleryView('trash')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${galleryView === 'trash' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-red-500'}`}>Papelera</button>
-                    </div>
-
-                    <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                        <GoogleDriveImporter onFilesSelected={onDriveImport} isProcessing={isProcessing} />
-                        {selectedIds.length > 0 && (
-                             <div className="flex items-center gap-2 animate-fade-in">
-                                 <span className="text-xs font-bold text-[#4f46e5] mr-2">{selectedIds.length} seleccionados</span>
-                                 {galleryView === 'trash' ? (
-                                     <>
-                                         <button onClick={() => onBulkRestore(selectedIds)} className="px-3 py-1.5 bg-green-50 text-green-600 rounded-md text-xs font-bold">Restaurar</button>
-                                         <button onClick={executeBulkDelete} className="px-3 py-1.5 bg-red-50 text-red-600 rounded-md text-xs font-bold">Eliminar</button>
-                                     </>
-                                 ) : (
-                                     <>
-                                         <button onClick={() => onBulkArchive(selectedIds, galleryView !== 'archived')} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-md text-xs font-bold">{galleryView === 'active' ? 'Ocultar' : 'Mostrar'}</button>
-                                         <button onClick={executeBulkDelete} className="px-3 py-1.5 bg-red-50 text-red-600 rounded-md text-xs font-bold">Papelera</button>
-                                     </>
-                                 )}
-                             </div>
-                        )}
-                        <button onClick={toggleSelectAll} className="text-gray-500 hover:text-[#4f46e5] flex items-center gap-2 text-sm font-medium px-2">
-                            {displayedPhotos.length > 0 && displayedPhotos.every(p => selectedIds.includes(p.id)) ? <><CheckSquare size={18} /> Todo</> : <><Square size={18} /> Seleccionar Todo</>}
-                        </button>
-                    </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6 bg-gray-50 custom-scrollbar">
-                    {displayedPhotos.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
-                             <Image size={64} className="mb-4" />
-                             <p>No hay imágenes en esta sección</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                            {displayedPhotos.map(photo => (
-                                <div key={photo.id} className={`relative group aspect-square rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${selectedIds.includes(photo.id) ? 'border-[#4f46e5] ring-2 ring-[#4f46e5]/20' : 'border-gray-200 hover:border-gray-300'}`} onClick={() => toggleSelection(photo.id)}>
-                                    <div className={`absolute top-2 left-2 z-10 w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedIds.includes(photo.id) ? 'bg-[#4f46e5] border-[#4f46e5] text-white' : 'bg-white/80 border-gray-300 hover:border-[#4f46e5]'}`}>
-                                        {selectedIds.includes(photo.id) && <Check size={12} strokeWidth={4} />}
-                                    </div>
-                                    {photo.type === 'video' ? (
-                                        <video src={photo.thumbnail} className="w-full h-full object-cover" muted />
-                                    ) : (
-                                        <img src={photo.thumbnail} className="w-full h-full object-cover" loading="lazy" />
-                                    )}
-                                    <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                                        <button onClick={(e) => { e.stopPropagation(); setPreviewPhoto(photo); }} className="bg-white/90 hover:bg-white p-2 rounded-md shadow-sm"><Maximize2 size={16} /></button>
-                                        {!photo.isDeleted && (
-                                            <button onClick={(e) => { e.stopPropagation(); onArchivePhoto(photo.id); }} className="bg-white/90 hover:bg-white p-2 rounded-md shadow-sm">{photo.isArchived ? <Eye size={16} /> : <EyeOff size={16} />}</button>
-                                        )}
-                                        {photo.isDeleted ? (
-                                             <button onClick={(e) => { e.stopPropagation(); onRestorePhoto(photo.id); }} className="bg-white/90 hover:bg-white p-2 rounded-md shadow-sm text-green-600"><RotateCcw size={16} /></button>
-                                        ) : (
-                                            <button onClick={(e) => { e.stopPropagation(); onDeletePhoto(photo.id); }} className="bg-white/90 hover:bg-white p-2 rounded-md shadow-sm text-red-500"><Trash2 size={16} /></button>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-          )}
-          
-          {activeTab === 'clients' && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
-                  <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                      <UserCheck className="text-[#4f46e5]" /> Gestión de Cliente
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                      <div className="space-y-6">
-                          <div>
-                              <label className="block text-sm font-bold text-gray-700 mb-2">Cliente</label>
-                              <input type="text" value={localConfig.clientName} onChange={(e) => setLocalConfig({...localConfig, clientName: e.target.value})} className="w-full p-4 bg-gray-800 text-white rounded-xl border border-gray-700 focus:ring-2 focus:ring-[#4f46e5] outline-none font-medium text-lg" />
-                          </div>
-                          <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
-                              <h4 className="text-blue-800 font-bold flex items-center gap-2 mb-2"><ExternalLink size={18} /> Enlace Público</h4>
-                              <p className="text-blue-600/80 text-xs mb-3 break-all">{APP_URL}?event={activeEvent.publicToken || activeEvent.id}</p>
-                              <button onClick={() => {navigator.clipboard.writeText(`${APP_URL}?event=${activeEvent.publicToken || activeEvent.id}`); setIsLinkCopied(true); setTimeout(() => setIsLinkCopied(false), 2000);}} className={`bg-white border px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${isLinkCopied ? 'text-green-600 border-green-200 bg-green-50' : 'text-blue-600 border-blue-200 hover:bg-blue-50'}`}>{isLinkCopied ? <><Check size={18} /> ¡Copiado!</> : 'Copiar Enlace'}</button>
-                          </div>
-                      </div>
-                      <div className="bg-gray-50 p-8 rounded-xl border border-gray-200 flex flex-col items-center justify-center text-center">
-                           <div className="bg-white p-4 rounded-xl shadow-sm mb-6">
-                               <QRCode id="qr-code-svg" value={`${APP_URL}?event=${activeEvent.publicToken || activeEvent.id}`} size={180} level="H" />
-                           </div>
-                           <button onClick={handleDownloadQR} className="flex items-center gap-2 px-6 py-3 bg-white border border-gray-300 rounded-full text-gray-700 font-bold hover:bg-gray-100 transition-all shadow-sm">Descargar QR</button>
-                      </div>
-                  </div>
-              </div>
-          )}
         </div>
       </main>
 
+      {/* MODALS */}
       {showDeleteEventConfirm && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowDeleteEventConfirm(false)} />
@@ -922,6 +1186,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
           </div>
       )}
+
     </div>
   );
 };
