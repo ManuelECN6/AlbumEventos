@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
-import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Heart, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Info, Monitor, Clipboard } from 'lucide-react';
+import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Heart, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Info, Monitor, Clipboard, Globe, AlertTriangle, Terminal, Copy, Menu, ChevronRight, Command } from 'lucide-react';
 import { uploadFileToFirebase } from '../services/firebaseService';
 import { GoogleDriveImporter } from './GoogleDriveImporter';
 import QRCode from "react-qr-code";
@@ -73,11 +73,6 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     googleDriveUrl: '',
     isDriveBackupEnabled: false
 };
-
-// Se usa la URL de producción fija
-const APP_URL = window.location.hostname.includes('localhost') 
-  ? window.location.origin 
-  : "https://lbum-digital-inteligente-464233428626.us-west1.run.app";
 
 const hexToRgba = (hex: string, alpha: number) => {
     let c: any;
@@ -159,18 +154,15 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
     ] as Photo[];
 
     const statsColor = theme.statsTextColor || theme.textColor;
-    // Fallback seguro para array de participantes
     const participants = config.participants || [];
     const confirmedCount = participants.filter(p => p.status === 'confirmed').length;
     
-    // Fallback seguro para título
     const title = config.title || 'Nuevo Evento';
     const subtitle = config.subtitle || '';
     const date = config.date || '';
 
     return (
         <div className="sticky top-8 mx-auto w-[300px] h-[600px] bg-gray-900 rounded-[3rem] border-[8px] border-gray-900 shadow-2xl overflow-hidden flex flex-col select-none ring-4 ring-gray-200">
-            {/* Notch & Status Bar */}
             <div className="h-7 bg-black w-full flex items-center justify-between px-6 z-30 shrink-0 absolute top-0 left-0 right-0 rounded-t-[2.5rem]">
                 <span className="text-[10px] text-white font-medium pl-2">9:41</span>
                 <div className="w-16 h-4 bg-black rounded-b-xl absolute left-1/2 -translate-x-1/2 top-0"></div>
@@ -179,14 +171,11 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                 </div>
             </div>
 
-            {/* App Content Container */}
             <div 
                 className={`flex-1 overflow-y-auto overflow-x-hidden flex flex-col relative ${fontClass} custom-scrollbar`}
                 style={{ backgroundColor: theme.backgroundColor, color: theme.textColor }}
             >
-                {/* --- HEADER SECTION --- */}
                 <div className="relative mb-4 shrink-0">
-                    {/* Cover Image */}
                     <div className="absolute inset-0 z-0 overflow-hidden h-full w-full">
                          {config.coverImage ? (
                              <img 
@@ -206,11 +195,8 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                         />
                     </div>
 
-                    {/* Content */}
                     <div className={`relative z-10 pt-10 pb-4 px-4 ${config.coverImage ? '' : 'pt-10'}`}>
-                        {/* Centered Flex Container */}
                         <div className="flex flex-col items-center gap-3 text-center">
-                            {/* Avatar */}
                             {theme.avatarImage ? (
                                 <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/20 shadow-sm shrink-0">
                                     <img src={theme.avatarImage} className="w-full h-full object-cover" />
@@ -240,7 +226,6 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                                     </div>
                                 </div>
 
-                                {/* Stats - Centered */}
                                 <div className="flex items-center justify-center gap-3 mt-3 text-[8px] font-bold uppercase tracking-wide" style={{ color: statsColor }}>
                                     <div className="flex flex-col items-center">
                                         <span className="text-xs leading-none">{previewPhotos.length}</span>
@@ -258,7 +243,6 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                             </div>
                         </div>
 
-                        {/* Action Buttons */}
                         <div className="flex gap-2 w-full mt-4">
                             {config.allowUploads && (
                                 <div className="flex-1 flex items-center justify-center gap-1 py-2 rounded-full font-medium shadow-md text-[10px]" style={{ backgroundColor: theme.primaryColor, color: theme.primaryTextColor }}>
@@ -272,7 +256,6 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                     </div>
                 </div>
 
-                {/* --- MAIN PHOTO GRID --- */}
                 <div className="px-3 pb-4">
                     <div className="grid grid-cols-1 gap-4">
                         {previewPhotos.map((photo) => (
@@ -284,7 +267,6 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                                     borderColor: 'rgba(0,0,0,0.05)'
                                 }}
                             >
-                                {/* Card Header */}
                                 <div className="p-2 flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <div className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: photo.author.avatarColor, color: '#fff' }}>
@@ -298,7 +280,6 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                                     <Flag size={10} className="opacity-30" style={{ color: theme.cardTextColor }} />
                                 </div>
 
-                                {/* Image */}
                                 <div className="bg-gray-100 aspect-[4/3] relative overflow-hidden">
                                      <img src={photo.thumbnail} className="w-full h-full object-cover" />
                                      <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-sm text-white text-[8px] px-1.5 py-0.5 rounded uppercase font-bold">
@@ -306,7 +287,6 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                                      </div>
                                 </div>
 
-                                {/* Footer */}
                                 <div className="p-2 border-t" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
                                     <div className="flex items-center gap-1 text-[10px] font-medium" style={{ color: theme.cardTextColor }}>
                                         <Heart size={12} />
@@ -319,7 +299,6 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                 </div>
             </div>
             
-            {/* Home Indicator */}
             <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-20 h-1 bg-white/30 rounded-full z-40"></div>
         </div>
     );
@@ -348,11 +327,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 }) => {
   const activeEvent = events?.find(e => e.id === currentEventId) || events?.[0] || DEFAULT_EVENT_TEMPLATE;
 
-  // SAFE INIT: Ensure theme, participants and categories are always merged/defined to avoid undefined crashes
   const [localConfig, setLocalConfig] = useState<EventConfig>(() => ({
-      ...DEFAULT_EVENT_TEMPLATE, // Start with defaults
-      ...activeEvent, // Override with active event data
-      // Deep merge crucial nested objects
+      ...DEFAULT_EVENT_TEMPLATE,
+      ...activeEvent,
       theme: { ...DEFAULT_EVENT_TEMPLATE.theme, ...activeEvent.theme },
       participants: activeEvent.participants || [],
       categories: activeEvent.categories || DEFAULT_EVENT_TEMPLATE.categories,
@@ -361,44 +338,63 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const [activeTab, setActiveTab] = useState<'general' | 'categories' | 'gallery' | 'clients' | 'participants' | 'appearance'>('general');
   const [searchTerm, setSearchTerm] = useState('');
-
-  // Gallery View Mode
   const [galleryView, setGalleryView] = useState<'active' | 'archived' | 'trash'>('active');
-
-  // Upload State
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
-
-  // Preview Modal State
   const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null);
   const [photoToDelete, setPhotoToDelete] = useState<Photo | null>(null);
-  
-  // Delete Confirmation
   const [showDeleteEventConfirm, setShowDeleteEventConfirm] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
-  
-  // Bulk Selection
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-
-  // Feedback
   const [isLinkCopied, setIsLinkCopied] = useState(false);
-  
-  // Token Lock State
   const [isTokenLocked, setIsTokenLocked] = useState(true);
-
-  // Inputs
   const [newParticipantName, setNewParticipantName] = useState('');
   const [participantSearch, setParticipantSearch] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#3b82f6');
+  const [showRunAppWarning, setShowRunAppWarning] = useState(false);
+  const [deployCommandCopied, setDeployCommandCopied] = useState(false);
 
-  // Sync local state when active event changes
+  // Estado para gestionar el dominio base (Localhost vs Dominio Personalizado)
+  const [baseUrl, setBaseUrl] = useState(() => {
+      if (typeof window !== 'undefined') {
+          // Detectar entornos de desarrollo de Google (IDX/AI Studio/Cloud Run) o Localhost
+          const isDevOrPreview = 
+              window.location.hostname === 'localhost' || 
+              window.location.hostname === '127.0.0.1' ||
+              window.location.hostname.includes('usercontent.goog') ||
+              window.location.hostname.includes('run.app') ||
+              window.location.hostname.includes('web.app');
+
+          if (isDevOrPreview) {
+               // Si estamos en un entorno temporal, preferir el dominio personalizado guardado
+               return localStorage.getItem('album_custom_domain') || 'https://album.mediumvisuals.com';
+          }
+          // Si estamos en producción (el dominio real), usarlo
+          return window.location.origin;
+      }
+      return '';
+  });
+
+  // Check for .run.app to show warning
+  useEffect(() => {
+      if (typeof window !== 'undefined' && window.location.hostname.includes('.run.app')) {
+          setShowRunAppWarning(true);
+      }
+  }, []);
+
+  // Guardar preferencia de dominio si cambia
+  useEffect(() => {
+      if (baseUrl && typeof window !== 'undefined') {
+          localStorage.setItem('album_custom_domain', baseUrl);
+      }
+  }, [baseUrl]);
+
   useEffect(() => {
     if (activeEvent?.id !== localConfig?.id) {
         setSelectedIds([]); 
         setIsTokenLocked(true); 
     }
-    // Defensive update when props change
     setLocalConfig({ 
         ...DEFAULT_EVENT_TEMPLATE,
         ...activeEvent,
@@ -421,11 +417,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleExitToSite = () => {
     const token = activeEvent.publicToken || activeEvent.id;
-    const url = new URL(window.location.href);
-    url.searchParams.set('event', token);
-    url.searchParams.delete('admin'); 
-    window.history.pushState({}, '', url.toString());
-    onExit();
+    // Construir URL limpia para visitar
+    let targetUrl = baseUrl.trim();
+    if (!targetUrl.startsWith('http')) {
+        targetUrl = 'https://' + targetUrl;
+    }
+    
+    // Asegurar que targetUrl es válida antes de crear URL
+    try {
+        const url = new URL(targetUrl);
+        url.searchParams.set('event', token);
+        
+        // Si estamos en el mismo dominio, redirección normal. Si no (localhost -> prod), abrir nueva pestaña.
+        if (window.location.origin === url.origin) {
+             window.location.href = url.toString();
+        } else {
+             window.open(url.toString(), '_blank');
+        }
+        onExit();
+    } catch (e) {
+        alert("El dominio configurado no es válido. Por favor revísalo en la pestaña Clientes.");
+    }
   };
 
   const addParticipant = () => {
@@ -564,7 +576,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       onUpdateField('categories', updatedCats);
   };
 
-  // --- FILTRADO DE FOTOS ---
   const displayedPhotos = (currentEventPhotos || []).filter(p => {
       if (galleryView === 'trash') return p.isDeleted;
       if (galleryView === 'archived') return p.isArchived && !p.isDeleted;
@@ -605,14 +616,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       }));
   };
 
-  // Safe accessors for lists
   const safeParticipants = localConfig.participants || [];
   const safeCategories = localConfig.categories || DEFAULT_EVENT_TEMPLATE.categories;
+
+  // Helper para asegurar URL válida
+  const getCleanUrl = (url: string) => {
+      let cleaned = url.trim().replace(/\/$/, '');
+      if (!cleaned) return '';
+      if (!cleaned.startsWith('http://') && !cleaned.startsWith('https://')) {
+          cleaned = 'https://' + cleaned;
+      }
+      return cleaned;
+  };
+
+  // Calculamos la URL final basada en el input del usuario
+  const finalBaseUrl = getCleanUrl(baseUrl);
+  const finalLink = `${finalBaseUrl}?event=${activeEvent.publicToken || activeEvent.id}`;
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans text-gray-800">
       
-      {/* SIDEBAR */}
       <aside className="w-72 bg-gray-900 text-gray-300 flex flex-col shadow-2xl z-30 shrink-0">
         <div className="p-6 border-b border-gray-800">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -672,7 +695,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             { id: 'appearance', icon: Palette, label: 'Personalización' },
                             { id: 'categories', icon: Grid, label: 'Categorías' },
                             { id: 'participants', icon: Users, label: 'Participantes' },
-                            { id: 'clients', icon: UserCheck, label: 'Clientes' },
+                            { id: 'clients', icon: UserCheck, label: 'Clientes & QR' },
                             { id: 'gallery', icon: Image, label: 'Galería' },
                         ].map((item) => (
                             <li key={item.id}>
@@ -697,9 +720,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
       <main className="flex-1 overflow-y-auto relative bg-gray-50 flex flex-col">
-        {/* Top Bar */}
         <header className="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shadow-sm">
             <div>
                 <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
@@ -707,7 +728,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     {activeTab === 'appearance' && 'Personalización y Marca'}
                     {activeTab === 'categories' && 'Categorías del Evento'}
                     {activeTab === 'gallery' && 'Gestión de Contenido'}
-                    {activeTab === 'clients' && 'Acceso del Cliente'}
+                    {activeTab === 'clients' && 'Acceso y Distribución'}
                     {activeTab === 'participants' && 'Lista de Invitados'}
                 </h1>
                 <p className="text-gray-500 text-sm">Editando: {localConfig.title}</p>
@@ -731,15 +752,68 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
         </header>
 
+        {showRunAppWarning && (
+            <div className="bg-orange-50 border-b border-orange-200 px-8 py-4 animate-fade-in shadow-sm">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4 max-w-5xl mx-auto">
+                    <div className="flex items-start gap-4 flex-1">
+                        <div className="bg-orange-100 p-2 rounded-full text-orange-600 shrink-0">
+                            <AlertTriangle size={24} />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="font-bold text-orange-900 text-lg">⚠️ Truco Secreto para Desplegar</h3>
+                            <p className="text-orange-800 text-sm mb-2">
+                                ¿No encuentras la terminal? En Google AI Studio/IDX a veces está oculta.
+                            </p>
+                            
+                            <div className="bg-white p-4 rounded-lg border border-orange-200 shadow-sm mt-2 flex flex-col gap-3">
+                                <p className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <Command size={16} /> Opción 1: El Menú de Comandos (Recomendado)
+                                </p>
+                                <ul className="text-sm text-gray-600 list-disc ml-6 space-y-1">
+                                    <li>Presiona <strong>Ctrl + Shift + P</strong> (o Cmd + Shift + P en Mac).</li>
+                                    <li>Escribe "Terminal" y selecciona <strong>"Create New Terminal"</strong>.</li>
+                                    <li>Pega el comando: <code className="bg-gray-100 px-2 py-1 rounded font-mono font-bold">firebase deploy --only hosting</code></li>
+                                </ul>
+
+                                <div className="border-t border-gray-100 my-1"></div>
+
+                                <p className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <Terminal size={16} /> Opción 2: Forzar Actualización
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                    He actualizado el archivo <code>firebase.json</code> por ti. A veces, simplemente recargar la página del editor fuerza al sistema a detectar la nueva configuración.
+                                </p>
+
+                                <div className="flex items-center gap-2 mt-2">
+                                    <code className="font-mono bg-gray-100 px-3 py-2 rounded text-gray-800 border border-gray-300 flex-1 select-all font-bold text-sm">
+                                        firebase deploy --only hosting
+                                    </code>
+                                    <button 
+                                        onClick={() => {
+                                            navigator.clipboard.writeText('firebase deploy --only hosting');
+                                            setDeployCommandCopied(true);
+                                            setTimeout(() => setDeployCommandCopied(false), 2000);
+                                        }}
+                                        className="bg-orange-600 text-white px-4 py-2 rounded font-bold hover:bg-orange-700 transition-colors flex items-center gap-2 text-xs h-full"
+                                    >
+                                        {deployCommandCopied ? <Check size={14} /> : <Copy size={14} />}
+                                        Copiar Comando
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button onClick={() => setShowRunAppWarning(false)} className="text-orange-400 hover:text-orange-800 p-2 self-start"><XIcon size={20} /></button>
+                </div>
+            </div>
+        )}
+
         <div className="p-8 max-w-7xl mx-auto w-full">
-          
+          {/* El resto del contenido sigue igual */}
           {/* --- TAB: APPEARANCE --- */}
           {activeTab === 'appearance' && (
              <div className="flex flex-col lg:flex-row gap-8 items-start">
-                
-                {/* Left Column: Controls */}
                 <div className="flex-1 space-y-6 w-full max-w-4xl">
-                    {/* Header Image */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                             <Image className="text-[#4f46e5]" /> Portada
@@ -783,7 +857,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                     </div>
 
-                    {/* Colors */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                          <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                             <Palette className="text-[#4f46e5]" /> Colores Principales
@@ -796,7 +869,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                          </div>
                     </div>
                     
-                    {/* Header Colors */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                          <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                             <Type className="text-[#4f46e5]" /> Colores de Texto (Encabezado)
@@ -823,7 +895,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                          </div>
                     </div>
 
-                    {/* Typography & Avatar */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
@@ -874,7 +945,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                 </div>
 
-                {/* Right Column: Live Preview */}
                 <div className="hidden xl:block w-[350px] shrink-0">
                     <div className="sticky top-24 flex justify-center">
                         <MobilePreview config={localConfig} activePhotos={currentEventPhotos || []} />
@@ -969,10 +1039,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 {isTokenLocked ? <Lock size={14} /> : <Unlock size={14} />}
                                             </button>
                                         </div>
-                                        <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
-                                            <Info size={10} />
-                                            {isTokenLocked ? "Bloqueado para evitar errores en QRs impresos." : "Edita con precaución. Si cambias esto, los QRs impresos dejarán de funcionar hasta que vuelvas a poner el mismo texto."}
-                                        </p>
                                     </div>
                                 </div>
                                 <div>
@@ -1106,7 +1172,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {activeTab === 'clients' && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
                   <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                      <UserCheck className="text-[#4f46e5]" /> Gestión de Cliente
+                      <UserCheck className="text-[#4f46e5]" /> Gestión de Cliente & Distribución
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                       <div className="space-y-6">
@@ -1114,15 +1180,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <label className="block text-sm font-bold text-gray-700 mb-2">Nombre Cliente</label>
                               <input type="text" value={localConfig.clientName} onChange={(e) => setLocalConfig({...localConfig, clientName: e.target.value})} className="w-full p-4 bg-gray-800 text-white rounded-xl border border-gray-700 focus:ring-2 focus:ring-[#4f46e5] outline-none font-medium text-lg" />
                           </div>
+                          
+                          {/* DOMINIO PERSONALIZADO INPUT */}
+                          <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                               <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2">
+                                    <Globe size={14} /> Dominio del Sitio (para QR y Enlaces)
+                               </label>
+                               <input 
+                                    type="text" 
+                                    value={baseUrl} 
+                                    onChange={(e) => setBaseUrl(e.target.value)} 
+                                    className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-[#4f46e5] outline-none mb-2"
+                                    placeholder="https://tudominio.com"
+                               />
+                               <p className="text-[10px] text-gray-500">
+                                   Edita esto si estás en localhost y quieres generar un QR para producción. Se guardará automáticamente.
+                               </p>
+                          </div>
+
                           <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
                               <h4 className="text-blue-800 font-bold flex items-center gap-2 mb-2"><ExternalLink size={18} /> Enlace Público</h4>
-                              <p className="text-blue-600/80 text-xs mb-3 break-all font-mono">{APP_URL}?event={activeEvent.publicToken || activeEvent.id}</p>
-                              <button onClick={() => {navigator.clipboard.writeText(`${APP_URL}?event=${activeEvent.publicToken || activeEvent.id}`); setIsLinkCopied(true); setTimeout(() => setIsLinkCopied(false), 2000);}} className={`bg-white border px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${isLinkCopied ? 'text-green-600 border-green-200 bg-green-50' : 'text-blue-600 border-blue-200 hover:bg-blue-50'}`}>{isLinkCopied ? <><Check size={18} /> ¡Copiado!</> : 'Copiar Enlace'}</button>
+                              <p className="text-blue-600/80 text-xs mb-3 break-all font-mono">{finalLink}</p>
+                              <button onClick={() => {navigator.clipboard.writeText(finalLink); setIsLinkCopied(true); setTimeout(() => setIsLinkCopied(false), 2000);}} className={`bg-white border px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${isLinkCopied ? 'text-green-600 border-green-200 bg-green-50' : 'text-blue-600 border-blue-200 hover:bg-blue-50'}`}>{isLinkCopied ? <><Check size={18} /> ¡Copiado!</> : 'Copiar Enlace'}</button>
                           </div>
                       </div>
                       <div className="bg-gray-50 p-8 rounded-xl border border-gray-200 flex flex-col items-center justify-center text-center">
                            <div className="bg-white p-4 rounded-xl shadow-sm mb-6">
-                               <QRCode id="qr-code-svg" value={`${APP_URL}?event=${activeEvent.publicToken || activeEvent.id}`} size={180} level="H" />
+                               <QRCode id="qr-code-svg" value={finalLink} size={180} level="H" />
                            </div>
                            <button onClick={handleDownloadQR} className="flex items-center gap-2 px-6 py-3 bg-white border border-gray-300 rounded-full text-gray-700 font-bold hover:bg-gray-100 transition-all shadow-sm">Descargar QR</button>
                       </div>
