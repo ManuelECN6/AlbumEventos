@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Función auxiliar para validar que una foto tenga la estructura correcta
+    function isValidPhoto() {
+      return request.resource.data.url is string &&
+             request.resource.data.author.name is string &&
+             request.resource.data.createdAt is string;
+    }
+
+    // Reglas para la colección de Eventos
+    match /events/{eventId} {
+      // 1. Lectura: Pública (necesario para que los invitados vean el álbum)
+      allow read: if true;
+      
+      // 2. Creación y Edición: Permitida
+      // Necesario para crear eventos, actualizar participantes y configuraciones.
+      allow create, update: if true;
+      
+      // 3. ELIMINACIÓN FÍSICA: BLOQUEADA (SEGURIDAD CRÍTICA)
+      // Esto impide que alguien borre el evento completo desde el navegador.
+      // Si necesitas borrar un evento, hazlo desde la consola de Firebase.
+      allow delete: if false;
+
+      // Reglas para la Subcolección de Fotos (La nueva arquitectura)
+      match /photos/{photoId} {
+        // Lectura pública
+        allow read: if true;
+        
+        // Creación permitida solo si los datos son válidos
+        allow create: if isValidPhoto();
+        
+        // Edición permitida (Para Likes y mover a Papelera/Soft Delete)
+        allow update: if true;
+        
+        // ELIMINACIÓN FÍSICA: BLOQUEADA
+        // El botón "Eliminar Definitivamente" de la app dará error intencionalmente.
+        // Usa "Papelera" (Soft Delete) para ocultar fotos.
+        allow delete: if false;
+      }
+    }
+  }
+}

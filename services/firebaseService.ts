@@ -276,10 +276,11 @@ export const processAndUploadPhoto = async (
   } else {
       try {
           const webpName = sanitizedName.replace(/\.[^/.]+$/, "") + ".webp";
-          const mainImg = await resizeImage(file, 1920, 0.85); // WebP Calidad Alta
+          // Ajuste de Calidad: 0.80 para principal y 0.50 para thumb es suficiente para WebP
+          const mainImg = await resizeImage(file, 1920, 0.80); 
           mainUrl = await uploadFileToFirebase(mainImg, `eventos/${eventId}/${userIdFolder}/${timestamp}_${webpName}`);
 
-          const thumbImg = await resizeImage(file, 500, 0.6); // WebP Miniatura
+          const thumbImg = await resizeImage(file, 500, 0.50); 
           thumbUrl = await uploadFileToFirebase(thumbImg, `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${timestamp}_${webpName}`);
       } catch (e) {
           console.warn("Fallback JPEG", e);

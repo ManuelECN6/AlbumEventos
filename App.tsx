@@ -99,7 +99,15 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [deviceId, setDeviceId] = useState<string>('');
 
-  const [isAdminMode, setIsAdminMode] = useState(false);
+  // OPTIMIZACIÓN: Inicializar estado directamente desde URL para evitar re-renders y dobles lecturas
+  const [isAdminMode, setIsAdminMode] = useState(() => {
+      if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          return params.get('admin') === 'true';
+      }
+      return false;
+  });
+
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   const [likedPhotoIds, setLikedPhotoIds] = useState<Set<string>>(new Set());
@@ -122,15 +130,12 @@ export default function App() {
 
   useEffect(() => {
       let unsubscribe: () => void;
-
       const params = new URLSearchParams(window.location.search);
       const urlEventToken = params.get('event');
-      const isAdminUrl = params.get('admin') === 'true';
 
-      if (isAdminUrl) {
-          setIsAdminMode(true);
-      }
-
+      // LÓGICA CRÍTICA DE COSTOS:
+      // Si es Admin -> Carga toda la lista (subscribeToEvents)
+      // Si es Visitante -> Carga SOLO 1 evento (subscribeToVisitorEvent) - Ahorro de lecturas
       if (isAdminMode) {
           console.log("Modo Admin: Cargando lista completa...");
           unsubscribe = subscribeToEvents((fetchedEvents) => {

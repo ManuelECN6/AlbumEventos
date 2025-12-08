@@ -86,11 +86,12 @@ export const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, e
   };
 
   const handleDownloadZip = async () => {
-    // 1. Get ALL photos (removed video filter)
-    const photosToDownload = event.photos; 
+    // 1. Filtrar fotos: Solo descargar las que NO están borradas Y NO están ocultas (Archivadas)
+    // Esto asegura que lo que el admin oculta, el cliente NO lo ve ni lo descarga.
+    const photosToDownload = event.photos.filter(p => !p.isDeleted && !p.isArchived); 
     
     if (photosToDownload.length === 0) {
-        alert("No hay fotos para descargar.");
+        alert("No hay fotos visibles para descargar.");
         return;
     }
 

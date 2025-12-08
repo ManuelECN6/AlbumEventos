@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
-import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Video, Grid, Eye, EyeOff, Lock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Smartphone, Heart, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera } from 'lucide-react';
+import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Heart, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Info, Monitor, Clipboard } from 'lucide-react';
 import { uploadFileToFirebase } from '../services/firebaseService';
 import { GoogleDriveImporter } from './GoogleDriveImporter';
 import QRCode from "react-qr-code";
@@ -74,11 +74,14 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     isDriveBackupEnabled: false
 };
 
-const APP_URL = window.location.origin;
+// Se usa la URL de producción fija
+const APP_URL = window.location.hostname.includes('localhost') 
+  ? window.location.origin 
+  : "https://lbum-digital-inteligente-464233428626.us-west1.run.app";
 
 const hexToRgba = (hex: string, alpha: number) => {
     let c: any;
-    if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
+    if (typeof hex === 'string' && /^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
         c = hex.substring(1).split('');
         if (c.length === 3) {
             c = [c[0], c[0], c[1], c[1], c[2], c[2]];
@@ -86,7 +89,7 @@ const hexToRgba = (hex: string, alpha: number) => {
         c = '0x' + c.join('');
         return 'rgba(' + [(c >> 16) & 255, (c >> 8) & 255, c & 255].join(',') + ',' + alpha + ')';
     }
-    return hex;
+    return hex || '#000000';
 };
 
 // --- COMPONENTE COLOR PICKER ---
@@ -151,13 +154,19 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
     const fontClass = theme.fontFamily === 'serif' ? 'font-serif' : 'font-sans';
     
     const previewPhotos = activePhotos.length > 0 ? activePhotos.slice(0, 4) : [
-        { id: '1', thumbnail: 'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=400', author: { name: 'Ana', initials: 'AN', avatarColor: '#3b82f6' }, likes: 12, category: 'General', createdAt: new Date().toISOString(), title: 'Ejemplo' },
-        { id: '2', thumbnail: 'https://images.unsplash.com/photo-1511285560982-1351cdeb9821?w=400', author: { name: 'Luis', initials: 'LU', avatarColor: '#ef4444' }, likes: 8, category: 'General', createdAt: new Date().toISOString(), title: 'Ejemplo' }
-    ];
+        { id: '1', thumbnail: 'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=400', author: { name: 'Ana', initials: 'AN', avatarColor: '#3b82f6' }, likes: 12, category: 'General', createdAt: new Date().toISOString(), title: 'Ejemplo', width: 400, height: 400 },
+        { id: '2', thumbnail: 'https://images.unsplash.com/photo-1511285560982-1351cdeb9821?w=400', author: { name: 'Luis', initials: 'LU', avatarColor: '#ef4444' }, likes: 8, category: 'General', createdAt: new Date().toISOString(), title: 'Ejemplo', width: 400, height: 400 }
+    ] as Photo[];
 
     const statsColor = theme.statsTextColor || theme.textColor;
-    const confirmedCount = config.participants ? config.participants.filter(p => p.status === 'confirmed').length : 0;
-    const remaining = Math.max(0, config.participantsCount - confirmedCount);
+    // Fallback seguro para array de participantes
+    const participants = config.participants || [];
+    const confirmedCount = participants.filter(p => p.status === 'confirmed').length;
+    
+    // Fallback seguro para título
+    const title = config.title || 'Nuevo Evento';
+    const subtitle = config.subtitle || '';
+    const date = config.date || '';
 
     return (
         <div className="sticky top-8 mx-auto w-[300px] h-[600px] bg-gray-900 rounded-[3rem] border-[8px] border-gray-900 shadow-2xl overflow-hidden flex flex-col select-none ring-4 ring-gray-200">
@@ -175,7 +184,7 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                 className={`flex-1 overflow-y-auto overflow-x-hidden flex flex-col relative ${fontClass} custom-scrollbar`}
                 style={{ backgroundColor: theme.backgroundColor, color: theme.textColor }}
             >
-                {/* --- HEADER SECTION (Copied logic from App.tsx) --- */}
+                {/* --- HEADER SECTION --- */}
                 <div className="relative mb-4 shrink-0">
                     {/* Cover Image */}
                     <div className="absolute inset-0 z-0 overflow-hidden h-full w-full">
@@ -184,8 +193,8 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                                 src={config.coverImage} 
                                 className="w-full h-full object-cover" 
                                 style={{ 
-                                    objectPosition: `50% ${theme.coverImagePositionY}%`,
-                                    filter: `blur(${theme.coverBlur}px)` 
+                                    objectPosition: `50% ${theme.coverImagePositionY || 50}%`,
+                                    filter: `blur(${theme.coverBlur || 0}px)` 
                                 }}
                              />
                          ) : (
@@ -199,7 +208,8 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
 
                     {/* Content */}
                     <div className={`relative z-10 pt-10 pb-4 px-4 ${config.coverImage ? '' : 'pt-10'}`}>
-                        <div className="flex flex-col items-start gap-3">
+                        {/* Centered Flex Container */}
+                        <div className="flex flex-col items-center gap-3 text-center">
                             {/* Avatar */}
                             {theme.avatarImage ? (
                                 <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/20 shadow-sm shrink-0">
@@ -210,28 +220,28 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                                     className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold shadow-sm shrink-0 uppercase border-2 border-white/20"
                                     style={{ backgroundColor: theme.avatarBackgroundColor, color: theme.avatarTextColor }}
                                 >
-                                    {config.title.substring(0, 2)}
+                                    {title.substring(0, 2)}
                                 </div>
                             )}
 
-                            <div>
-                                <h1 className="text-xl font-bold leading-tight mb-1" style={{ color: theme.headerTitleColor || theme.textColor }}>
-                                    {config.title}
+                            <div className="flex flex-col items-center w-full">
+                                <h1 className="text-xl font-bold leading-tight mb-1 text-center" style={{ color: theme.headerTitleColor || theme.textColor }}>
+                                    {title}
                                 </h1>
-                                <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                                <div className="flex flex-wrap items-center justify-center gap-2 text-[10px]">
                                     <div className="flex items-center gap-1" style={{ color: theme.headerDateColor || theme.textColor }}>
                                         <User size={10} />
-                                        <span>{config.subtitle}</span>
+                                        <span>{subtitle}</span>
                                     </div>
                                     <span className="opacity-50">•</span>
                                     <div className="flex items-center gap-1" style={{ color: theme.headerDateColor || theme.textColor }}>
                                         <Calendar size={10} />
-                                        <span>{config.date}</span>
+                                        <span>{date}</span>
                                     </div>
                                 </div>
 
-                                {/* Stats */}
-                                <div className="flex items-center gap-3 mt-3 text-[8px] font-bold uppercase tracking-wide" style={{ color: statsColor }}>
+                                {/* Stats - Centered */}
+                                <div className="flex items-center justify-center gap-3 mt-3 text-[8px] font-bold uppercase tracking-wide" style={{ color: statsColor }}>
                                     <div className="flex flex-col items-center">
                                         <span className="text-xs leading-none">{previewPhotos.length}</span>
                                         <span>Fotos</span>
@@ -262,7 +272,7 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                     </div>
                 </div>
 
-                {/* --- MAIN PHOTO GRID (Copied logic from App.tsx) --- */}
+                {/* --- MAIN PHOTO GRID --- */}
                 <div className="px-3 pb-4">
                     <div className="grid grid-cols-1 gap-4">
                         {previewPhotos.map((photo) => (
@@ -338,7 +348,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 }) => {
   const activeEvent = events?.find(e => e.id === currentEventId) || events?.[0] || DEFAULT_EVENT_TEMPLATE;
 
-  const [localConfig, setLocalConfig] = useState<EventConfig>({ ...activeEvent });
+  // SAFE INIT: Ensure theme, participants and categories are always merged/defined to avoid undefined crashes
+  const [localConfig, setLocalConfig] = useState<EventConfig>(() => ({
+      ...DEFAULT_EVENT_TEMPLATE, // Start with defaults
+      ...activeEvent, // Override with active event data
+      // Deep merge crucial nested objects
+      theme: { ...DEFAULT_EVENT_TEMPLATE.theme, ...activeEvent.theme },
+      participants: activeEvent.participants || [],
+      categories: activeEvent.categories || DEFAULT_EVENT_TEMPLATE.categories,
+      photos: activeEvent.photos || []
+  }));
+
   const [activeTab, setActiveTab] = useState<'general' | 'categories' | 'gallery' | 'clients' | 'participants' | 'appearance'>('general');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -362,6 +382,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Feedback
   const [isLinkCopied, setIsLinkCopied] = useState(false);
+  
+  // Token Lock State
+  const [isTokenLocked, setIsTokenLocked] = useState(true);
 
   // Inputs
   const [newParticipantName, setNewParticipantName] = useState('');
@@ -373,11 +396,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   useEffect(() => {
     if (activeEvent?.id !== localConfig?.id) {
         setSelectedIds([]); 
+        setIsTokenLocked(true); 
     }
-    // Deep merge to ensure theme object exists
+    // Defensive update when props change
     setLocalConfig({ 
+        ...DEFAULT_EVENT_TEMPLATE,
         ...activeEvent,
-        theme: { ...DEFAULT_EVENT_TEMPLATE.theme, ...activeEvent.theme }
+        theme: { ...DEFAULT_EVENT_TEMPLATE.theme, ...activeEvent.theme },
+        participants: activeEvent.participants || [],
+        categories: activeEvent.categories || DEFAULT_EVENT_TEMPLATE.categories,
+        photos: activeEvent.photos || []
     });
   }, [activeEvent]);
 
@@ -391,10 +419,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  const handleExitToSite = () => {
+    const token = activeEvent.publicToken || activeEvent.id;
+    const url = new URL(window.location.href);
+    url.searchParams.set('event', token);
+    url.searchParams.delete('admin'); 
+    window.history.pushState({}, '', url.toString());
+    onExit();
+  };
+
   const addParticipant = () => {
     const name = newParticipantName.trim();
     if (name) {
-        const exists = localConfig.participants?.some(p => p.name.toLowerCase() === name.toLowerCase());
+        const currentParticipants = localConfig.participants || [];
+        const exists = currentParticipants.some(p => p.name.toLowerCase() === name.toLowerCase());
         if (exists) {
             alert("Ya existe un participante con este nombre.");
             return;
@@ -406,7 +444,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             status: 'confirmed',
             addedAt: new Date().toISOString().split('T')[0]
         };
-        const updatedParticipants = [...(localConfig.participants || []), newParticipant];
+        const updatedParticipants = [...currentParticipants, newParticipant];
         setLocalConfig(prev => ({ ...prev, participants: updatedParticipants }));
         onUpdateField('participants', updatedParticipants);
         setNewParticipantName('');
@@ -422,7 +460,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const getParticipantContent = (participant: Participant) => {
-      // IMPORTANTE: Usamos currentEventPhotos que viene de App.tsx (Subcolección + Legacy)
       const sourcePhotos = currentEventPhotos || [];
       const content = sourcePhotos.filter(photo => 
           !photo.isDeleted && isContentOwnedBy(photo, participant)
@@ -441,7 +478,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         const path = `eventos/${activeEvent.id}/assets/banner_${timestamp}_${sanitizedName}`;
         const url = await uploadFileToFirebase(file, path);
         
-        // Update local and remote
         setLocalConfig(prev => ({ ...prev, coverImage: url }));
         onUpdateField('coverImage', url);
       } catch (error) {
@@ -482,15 +518,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
       const img = new window.Image();
+      const size = 2000; 
+
       img.onload = () => {
-          canvas.width = img.width;
-          canvas.height = img.height;
-          ctx?.drawImage(img, 0, 0);
-          const pngFile = canvas.toDataURL("image/png");
-          const downloadLink = document.createElement("a");
-          downloadLink.download = `QR_${activeEvent.title.replace(/\s+/g, '_')}.png`;
-          downloadLink.href = pngFile;
-          downloadLink.click();
+          canvas.width = size;
+          canvas.height = size;
+          if (ctx) {
+              ctx.fillStyle = "#FFFFFF";
+              ctx.fillRect(0, 0, size, size);
+              ctx.drawImage(img, 0, 0, size, size);
+              const pngFile = canvas.toDataURL("image/png");
+              const downloadLink = document.createElement("a");
+              downloadLink.download = `QR_${localConfig.title.replace(/\s+/g, '_')}_Impresion.png`;
+              downloadLink.href = pngFile;
+              downloadLink.click();
+          }
       };
       img.src = "data:image/svg+xml;base64," + btoa(svgData);
   };
@@ -502,7 +544,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             name: newCategoryName.trim(),
             color: newCategoryColor
         };
-        const updatedCats = [...localConfig.categories, newCat];
+        const currentCats = localConfig.categories || DEFAULT_EVENT_TEMPLATE.categories;
+        const updatedCats = [...currentCats, newCat];
         setLocalConfig(prev => ({ ...prev, categories: updatedCats }));
         onUpdateField('categories', updatedCats);
         setNewCategoryName('');
@@ -511,11 +554,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleDeleteCategory = (id: string) => {
-      if (localConfig.categories.length <= 1) {
+      const currentCats = localConfig.categories || [];
+      if (currentCats.length <= 1) {
           alert("Debe haber al menos una categoría.");
           return;
       }
-      const updatedCats = localConfig.categories.filter(c => c.id !== id);
+      const updatedCats = currentCats.filter(c => c.id !== id);
       setLocalConfig(prev => ({ ...prev, categories: updatedCats }));
       onUpdateField('categories', updatedCats);
   };
@@ -536,6 +580,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           setSelectedIds(prev => Array.from(new Set([...prev, ...targetIds])));
       }
   };
+
+  const toggleSelection = (id: string) => {
+      setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
   
   const executeBulkDelete = async () => {
       if (selectedIds.length === 0) return;
@@ -546,6 +594,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           setSelectedIds([]);
       }
   };
+  
+  const updateLocalTheme = (field: string, value: any) => {
+      setLocalConfig(prev => ({ 
+          ...prev, 
+          theme: { 
+              ...(prev.theme || DEFAULT_EVENT_TEMPLATE.theme!), 
+              [field]: value 
+          } 
+      }));
+  };
+
+  // Safe accessors for lists
+  const safeParticipants = localConfig.participants || [];
+  const safeCategories = localConfig.categories || DEFAULT_EVENT_TEMPLATE.categories;
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans text-gray-800">
@@ -629,7 +691,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </nav>
         
         <div className="p-4 border-t border-gray-800">
-            <button onClick={onExit} className="w-full flex items-center gap-2 text-gray-500 hover:text-white transition-colors text-xs px-2">
+            <button onClick={handleExitToSite} className="w-full flex items-center gap-2 text-gray-500 hover:text-white transition-colors text-xs px-2">
                 <ArrowLeft size={14} /> Volver al Sitio
             </button>
         </div>
@@ -648,7 +710,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     {activeTab === 'clients' && 'Acceso del Cliente'}
                     {activeTab === 'participants' && 'Lista de Invitados'}
                 </h1>
-                <p className="text-gray-500 text-sm">Editando: {activeEvent?.title}</p>
+                <p className="text-gray-500 text-sm">Editando: {localConfig.title}</p>
             </div>
             <div className="flex gap-3">
                 {activeTab === 'general' && (
@@ -671,7 +733,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         <div className="p-8 max-w-7xl mx-auto w-full">
           
-          {/* --- TAB: APPEARANCE (CON LIVE PREVIEW Y COLOR PICKER ORIGINAL) --- */}
+          {/* --- TAB: APPEARANCE --- */}
           {activeTab === 'appearance' && (
              <div className="flex flex-col lg:flex-row gap-8 items-start">
                 
@@ -715,7 +777,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 min="0" 
                                 max="100" 
                                 value={localConfig.theme?.coverImagePositionY || 50} 
-                                onChange={(e) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, coverImagePositionY: Number(e.target.value) } }))}
+                                onChange={(e) => updateLocalTheme('coverImagePositionY', Number(e.target.value))}
                                 className="w-full accent-[#4f46e5]"
                             />
                         </div>
@@ -727,10 +789,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <Palette className="text-[#4f46e5]" /> Colores Principales
                          </h3>
                          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                            <ColorPicker label="Fondo" value={localConfig.theme?.backgroundColor} onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, backgroundColor: c } }))} fallback="#f5f0e6"/>
-                            <ColorPicker label="Texto" value={localConfig.theme?.textColor} onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, textColor: c } }))} fallback="#1f2937"/>
-                            <ColorPicker label="Primario" value={localConfig.theme?.primaryColor} onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, primaryColor: c } }))} fallback="#a87b51"/>
-                            <ColorPicker label="Secundario" value={localConfig.theme?.secondaryColor} onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, secondaryColor: c } }))} fallback="#4f46e5"/>
+                            <ColorPicker label="Fondo" value={localConfig.theme?.backgroundColor} onChange={(c) => updateLocalTheme('backgroundColor', c)} fallback="#f5f0e6"/>
+                            <ColorPicker label="Texto" value={localConfig.theme?.textColor} onChange={(c) => updateLocalTheme('textColor', c)} fallback="#1f2937"/>
+                            <ColorPicker label="Primario" value={localConfig.theme?.primaryColor} onChange={(c) => updateLocalTheme('primaryColor', c)} fallback="#a87b51"/>
+                            <ColorPicker label="Secundario" value={localConfig.theme?.secondaryColor} onChange={(c) => updateLocalTheme('secondaryColor', c)} fallback="#4f46e5"/>
                          </div>
                     </div>
                     
@@ -743,19 +805,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <ColorPicker 
                                 label="Título Principal" 
                                 value={localConfig.theme?.headerTitleColor} 
-                                onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, headerTitleColor: c } }))} 
+                                onChange={(c) => updateLocalTheme('headerTitleColor', c)} 
                                 fallback="#1f2937"
                             />
                             <ColorPicker 
                                 label="Fecha y Subtítulo" 
                                 value={localConfig.theme?.headerDateColor} 
-                                onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, headerDateColor: c } }))} 
+                                onChange={(c) => updateLocalTheme('headerDateColor', c)} 
                                 fallback="#6b7280"
                             />
                              <ColorPicker 
                                 label="Estadísticas" 
                                 value={localConfig.theme?.statsTextColor} 
-                                onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, statsTextColor: c } }))} 
+                                onChange={(c) => updateLocalTheme('statsTextColor', c)} 
                                 fallback="#6b7280"
                             />
                          </div>
@@ -769,7 +831,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                              </h3>
                              <div className="flex flex-col gap-3">
                                  <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${localConfig.theme?.fontFamily === 'sans' ? 'border-[#4f46e5] bg-indigo-50' : 'hover:bg-gray-50'}`}>
-                                     <input type="radio" name="fontFamily" checked={localConfig.theme?.fontFamily === 'sans'} onChange={() => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, fontFamily: 'sans' } }))} className="hidden" />
+                                     <input type="radio" name="fontFamily" checked={localConfig.theme?.fontFamily === 'sans'} onChange={() => updateLocalTheme('fontFamily', 'sans')} className="hidden" />
                                      <div className="font-sans">
                                          <span className="block font-bold">Sans Serif</span>
                                          <span className="text-xs text-gray-500">Moderno (Lato)</span>
@@ -777,7 +839,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                      {localConfig.theme?.fontFamily === 'sans' && <Check size={16} className="ml-auto text-[#4f46e5]" />}
                                  </label>
                                  <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${localConfig.theme?.fontFamily === 'serif' ? 'border-[#4f46e5] bg-indigo-50' : 'hover:bg-gray-50'}`}>
-                                     <input type="radio" name="fontFamily" checked={localConfig.theme?.fontFamily === 'serif'} onChange={() => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, fontFamily: 'serif' } }))} className="hidden" />
+                                     <input type="radio" name="fontFamily" checked={localConfig.theme?.fontFamily === 'serif'} onChange={() => updateLocalTheme('fontFamily', 'serif')} className="hidden" />
                                      <div className="font-serif">
                                          <span className="block font-bold">Serif</span>
                                          <span className="text-xs text-gray-500">Elegante (Playfair)</span>
@@ -805,7 +867,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                       </div>
                                  </div>
                                  <div className="flex-1 space-y-2">
-                                      <ColorPicker label="Fondo" value={localConfig.theme?.avatarBackgroundColor} onChange={(c) => setLocalConfig(prev => ({ ...prev, theme: { ...prev.theme!, avatarBackgroundColor: c } }))} fallback="#374151"/>
+                                      <ColorPicker label="Fondo" value={localConfig.theme?.avatarBackgroundColor} onChange={(c) => updateLocalTheme('avatarBackgroundColor', c)} fallback="#374151"/>
                                  </div>
                              </div>
                         </div>
@@ -854,7 +916,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <h3 className="text-lg font-bold text-gray-800 p-6 border-b border-gray-100">Categorías Activas</h3>
                     <div className="divide-y divide-gray-100">
-                        {localConfig.categories.map((cat) => (
+                        {safeCategories.map((cat) => (
                             <div key={cat.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
                                 <div className="flex items-center gap-4">
                                     <div className="w-8 h-8 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-white font-bold text-xs" style={{ backgroundColor: cat.color }}>
@@ -888,7 +950,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     </div>
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-1">Token URL</label>
-                                        <input type="text" value={localConfig.publicToken} onChange={(e) => setLocalConfig({...localConfig, publicToken: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                        <div className="relative">
+                                            <input 
+                                                type="text" 
+                                                value={localConfig.publicToken} 
+                                                onChange={(e) => setLocalConfig({...localConfig, publicToken: e.target.value})} 
+                                                className={`w-full pl-10 pr-10 py-2 rounded-lg border outline-none ${isTokenLocked ? 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed' : 'bg-white border-gray-300 focus:ring-2 focus:ring-[#4f46e5]'}`}
+                                                disabled={isTokenLocked}
+                                            />
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                                {isTokenLocked ? <Lock size={16} /> : <ExternalLink size={16} />}
+                                            </div>
+                                            <button 
+                                                onClick={() => setIsTokenLocked(!isTokenLocked)}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-md transition-colors"
+                                                title={isTokenLocked ? "Desbloquear para editar" : "Bloquear"}
+                                            >
+                                                {isTokenLocked ? <Lock size={14} /> : <Unlock size={14} />}
+                                            </button>
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
+                                            <Info size={10} />
+                                            {isTokenLocked ? "Bloqueado para evitar errores en QRs impresos." : "Edita con precaución. Si cambias esto, los QRs impresos dejarán de funcionar hasta que vuelvas a poner el mismo texto."}
+                                        </p>
                                     </div>
                                 </div>
                                 <div>
@@ -997,10 +1081,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     ) : (
                         <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4">
                             {displayedPhotos.map(photo => (
-                                <div key={photo.id} className={`relative group aspect-square rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${selectedIds.includes(photo.id) ? 'border-[#4f46e5] ring-2 ring-[#4f46e5]/20' : 'border-gray-200 hover:border-gray-300'}`} onClick={() => {
-                                    if(selectedIds.includes(photo.id)) setSelectedIds(prev => prev.filter(i => i !== photo.id));
-                                    else setSelectedIds(prev => [...prev, photo.id]);
-                                }}>
+                                <div key={photo.id} className={`relative group aspect-square rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${selectedIds.includes(photo.id) ? 'border-[#4f46e5] ring-2 ring-[#4f46e5]/20' : 'border-gray-200 hover:border-gray-300'}`} onClick={() => toggleSelection(photo.id)}>
                                     <div className={`absolute top-2 left-2 z-10 w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedIds.includes(photo.id) ? 'bg-[#4f46e5] border-[#4f46e5] text-white' : 'bg-white/80 border-gray-300'}`}>
                                         {selectedIds.includes(photo.id) && <Check size={12} strokeWidth={4} />}
                                     </div>
@@ -1075,12 +1156,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="lg:col-span-8">
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                             <h3 className="font-bold text-gray-700">Participantes ({localConfig.participants?.length || 0})</h3>
+                             <h3 className="font-bold text-gray-700">Participantes ({safeParticipants.length})</h3>
                              <input type="text" placeholder="Buscar..." value={participantSearch} onChange={(e) => setParticipantSearch(e.target.value)} className="pl-3 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-[#4f46e5] outline-none" />
                         </div>
                         <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto custom-scrollbar">
-                            {localConfig.participants && localConfig.participants.length > 0 ? (
-                                localConfig.participants
+                            {safeParticipants.length > 0 ? (
+                                safeParticipants
                                 .filter(p => p.name.toLowerCase().includes(participantSearch.toLowerCase()))
                                 .map((p) => {
                                     const stats = getParticipantContent(p);
@@ -1101,7 +1182,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                                     <span className="text-[10px] text-gray-500 uppercase">Fotos</span>
                                                 </div>
                                                 <button onClick={() => {
-                                                        const updated = localConfig.participants.filter(part => part.id !== p.id);
+                                                        const updated = safeParticipants.filter(part => part.id !== p.id);
                                                         setLocalConfig(prev => ({ ...prev, participants: updated }));
                                                         onUpdateField('participants', updated);
                                                     }} className="p-2 text-gray-400 hover:text-red-500 rounded-lg"><Trash2 size={16} /></button>
@@ -1186,7 +1267,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
           </div>
       )}
-
     </div>
   );
 };
