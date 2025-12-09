@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
-import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Heart, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Info, Monitor, Clipboard, Globe, AlertTriangle, Terminal, Copy, Menu, ChevronRight, Command, CloudLightning, Ticket, Smartphone, Video, Image as ImageIcon, Database, RefreshCw } from 'lucide-react';
+import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Heart, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Info, Monitor, Clipboard, Globe, AlertTriangle, Terminal, Copy, Menu, ChevronRight, Command, CloudLightning, Ticket, Smartphone, Video, Image as ImageIcon, Database, RefreshCw, Zap } from 'lucide-react';
 import { uploadFileToFirebase, recalculateEventStorageUsage } from '../services/firebaseService';
 import { GoogleDriveImporter } from './GoogleDriveImporter';
 import QRCode from "react-qr-code";

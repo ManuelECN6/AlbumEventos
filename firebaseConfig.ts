@@ -1,11 +1,9 @@
-
-
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 // Configuración de tu proyecto "Album"
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyAnDd_S1Nw8LUPfEQzZ2sBVmfBsf6VOUoE",
   authDomain: "album-31eb4.firebaseapp.com",
   projectId: "album-31eb4",
