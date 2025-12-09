@@ -2,41 +2,52 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Función auxiliar para validar que una foto tenga la estructura correcta
+    // --- FUNCIONES DE SEGURIDAD Y VALIDACIÓN ---
+
+    // Verifica que lo que se intenta guardar como Foto tenga la estructura correcta
     function isValidPhoto() {
+      // Una foto debe tener URL, autor y fecha. Si intentan subir otra cosa, se bloquea.
       return request.resource.data.url is string &&
-             request.resource.data.author.name is string &&
+             (request.resource.data.author.name is string || request.resource.data.author is map) &&
              request.resource.data.createdAt is string;
     }
 
-    // Reglas para la colección de Eventos
+    // Verifica que lo que se intenta guardar como Evento tenga datos mínimos
+    function isValidEvent() {
+      // Un evento debe tener al menos un título.
+      return request.resource.data.title is string;
+    }
+
+    // --- REGLAS PRINCIPALES ---
+
     match /events/{eventId} {
-      // 1. Lectura: Pública (necesario para que los invitados vean el álbum)
+      // 1. LECTURA: Pública
+      // Necesario para que el QR funcione y los invitados vean el álbum.
       allow read: if true;
       
-      // 2. Creación y Edición: Permitida
-      // Necesario para crear eventos, actualizar participantes y configuraciones.
-      allow create, update: if true;
+      // 2. ESCRITURA (Crear/Editar): Validada
+      // Antes era 'if true'. Ahora exigimos que sea un evento válido.
+      allow create, update: if isValidEvent();
       
-      // 3. ELIMINACIÓN FÍSICA: BLOQUEADA (SEGURIDAD CRÍTICA)
-      // Esto impide que alguien borre el evento completo desde el navegador.
-      // Si necesitas borrar un evento, hazlo desde la consola de Firebase.
+      // 3. BORRADO: PROHIBIDO (CANDADO DE SEGURIDAD)
+      // Nadie puede borrar un evento entero desde la página web.
+      // Esto protege tu base de datos de borrados malintencionados o accidentales.
       allow delete: if false;
 
-      // Reglas para la Subcolección de Fotos (La nueva arquitectura)
+      // --- SUBCOLECCIÓN DE FOTOS ---
       match /photos/{photoId} {
-        // Lectura pública
+        // Lectura pública para la galería
         allow read: if true;
         
-        // Creación permitida solo si los datos son válidos
+        // Creación: Solo si es una foto válida (URL, Fecha, Autor)
         allow create: if isValidPhoto();
         
-        // Edición permitida (Para Likes y mover a Papelera/Soft Delete)
+        // Edición: Permitida (necesario para dar Likes o marcar como borrada/soft-delete)
         allow update: if true;
         
-        // ELIMINACIÓN FÍSICA: BLOQUEADA
-        // El botón "Eliminar Definitivamente" de la app dará error intencionalmente.
-        // Usa "Papelera" (Soft Delete) para ocultar fotos.
+        // BORRADO FÍSICO: PROHIBIDO
+        // Aunque el usuario pulse "Eliminar", la app solo la oculta (isDeleted=true).
+        // Nadie puede eliminar el registro físico de la base de datos desde fuera.
         allow delete: if false;
       }
     }
