@@ -324,6 +324,18 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
       return;
     }
 
+    // --- NUEVA VALIDACIÓN: CAPACIDAD DEL EVENTO ---
+    const capacityLimit = event.participantsCount || 0;
+    // Si hay límite y el usuario NO está registrado previamente, validamos el cupo
+    if (capacityLimit > 0 && !existingUserInEvent) {
+         // Calculamos ocupación actual (basado en participantes confirmados en memoria local del evento)
+         const currentOccupancy = event.participants?.length || 0;
+         if (currentOccupancy >= capacityLimit) {
+             setError("Lo sentimos, este álbum ha alcanzado el límite máximo de invitados permitidos.");
+             return;
+         }
+    }
+
     setIsUploading(true);
     
     try {

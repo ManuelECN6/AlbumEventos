@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
-import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Heart, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Info, Monitor, Clipboard, Globe, AlertTriangle, Terminal, Copy, Menu, ChevronRight, Command, CloudLightning } from 'lucide-react';
+import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Heart, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Info, Monitor, Clipboard, Globe, AlertTriangle, Terminal, Copy, Menu, ChevronRight, Command, CloudLightning, Ticket, Smartphone, Video, Image as ImageIcon } from 'lucide-react';
 import { uploadFileToFirebase } from '../services/firebaseService';
 import { GoogleDriveImporter } from './GoogleDriveImporter';
 import QRCode from "react-qr-code";
@@ -39,7 +39,7 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     categories: [{ id: 'c1', name: 'General', color: '#3b82f6' }],
     allowUploads: true,
     allowDownloads: false, 
-    allowedMediaTypes: ['photo'],
+    allowedMediaTypes: ['photo', 'video'],
     storageLimit: 100,
     maxPhotosPerPerson: 25,
     maxVideosPerPerson: 5,
@@ -156,10 +156,17 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
     const statsColor = theme.statsTextColor || theme.textColor;
     const participants = config.participants || [];
     const confirmedCount = participants.filter(p => p.status === 'confirmed').length;
+    const limit = config.participantsCount || 0;
+    
+    // Lógica visual simplificada como en App.tsx
+    const participantsDisplay = limit === 0 ? confirmedCount : `${confirmedCount}/${limit}`;
     
     const title = config.title || 'Nuevo Evento';
     const subtitle = config.subtitle || '';
     const date = config.date || '';
+
+    // MOBILE USES ONLY 'coverImagePositionY'
+    const mobilePos = theme.coverImagePositionY || 50;
 
     return (
         <div className="sticky top-8 mx-auto w-[300px] h-[600px] bg-gray-900 rounded-[3rem] border-[8px] border-gray-900 shadow-2xl overflow-hidden flex flex-col select-none ring-4 ring-gray-200">
@@ -180,9 +187,9 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                          {config.coverImage ? (
                              <img 
                                 src={config.coverImage} 
-                                className="w-full h-full object-cover" 
+                                className="w-full h-full object-cover transition-all duration-300" 
                                 style={{ 
-                                    objectPosition: `50% ${theme.coverImagePositionY || 50}%`,
+                                    objectPosition: `50% ${mobilePos}%`,
                                     filter: `blur(${theme.coverBlur || 0}px)` 
                                 }}
                              />
@@ -236,7 +243,7 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                                         <span>Likes</span>
                                     </div>
                                     <div className="flex flex-col items-center">
-                                        <span className="text-xs leading-none">{confirmedCount}</span>
+                                        <span className="text-xs leading-none">{participantsDisplay}</span>
                                         <span>Invitados</span>
                                     </div>
                                 </div>
@@ -333,7 +340,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       theme: { ...DEFAULT_EVENT_TEMPLATE.theme, ...activeEvent.theme },
       participants: activeEvent.participants || [],
       categories: activeEvent.categories || DEFAULT_EVENT_TEMPLATE.categories,
-      photos: activeEvent.photos || []
+      photos: activeEvent.photos || [],
+      allowedMediaTypes: activeEvent.allowedMediaTypes || ['photo']
   }));
 
   const [activeTab, setActiveTab] = useState<'general' | 'categories' | 'gallery' | 'clients' | 'participants' | 'appearance'>('general');
@@ -353,10 +361,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#3b82f6');
 
-  // Estado para gestionar el dominio base (Localhost vs Dominio Personalizado)
+  // Estado para gestionar el dominio base
   const [baseUrl, setBaseUrl] = useState(() => {
       if (typeof window !== 'undefined') {
-          // Detectar entornos de desarrollo de Google (IDX/AI Studio/Cloud Run) o Localhost
           const isDevOrPreview = 
               window.location.hostname === 'localhost' || 
               window.location.hostname === '127.0.0.1' ||
@@ -365,16 +372,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               window.location.hostname.includes('web.app');
 
           if (isDevOrPreview) {
-               // Si estamos en un entorno temporal, preferir el dominio personalizado guardado
                return localStorage.getItem('album_custom_domain') || 'https://album.mediumvisuals.com';
           }
-          // Si estamos en producción (el dominio real), usarlo
           return window.location.origin;
       }
       return '';
   });
 
-  // Guardar preferencia de dominio si cambia
   useEffect(() => {
       if (baseUrl && typeof window !== 'undefined') {
           localStorage.setItem('album_custom_domain', baseUrl);
@@ -392,7 +396,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         theme: { ...DEFAULT_EVENT_TEMPLATE.theme, ...activeEvent.theme },
         participants: activeEvent.participants || [],
         categories: activeEvent.categories || DEFAULT_EVENT_TEMPLATE.categories,
-        photos: activeEvent.photos || []
+        photos: activeEvent.photos || [],
+        allowedMediaTypes: activeEvent.allowedMediaTypes || ['photo']
     });
   }, [activeEvent]);
 
@@ -408,18 +413,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleExitToSite = () => {
     const token = activeEvent.publicToken || activeEvent.id;
-    // Construir URL limpia para visitar
     let targetUrl = baseUrl.trim();
     if (!targetUrl.startsWith('http')) {
         targetUrl = 'https://' + targetUrl;
     }
     
-    // Asegurar que targetUrl es válida antes de crear URL
     try {
         const url = new URL(targetUrl);
         url.searchParams.set('event', token);
-        
-        // Si estamos en el mismo dominio, redirección normal. Si no (localhost -> prod), abrir nueva pestaña.
         if (window.location.origin === url.origin) {
              window.location.href = url.toString();
         } else {
@@ -610,7 +611,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const safeParticipants = localConfig.participants || [];
   const safeCategories = localConfig.categories || DEFAULT_EVENT_TEMPLATE.categories;
 
-  // Helper para asegurar URL válida
   const getCleanUrl = (url: string) => {
       let cleaned = url.trim().replace(/\/$/, '');
       if (!cleaned) return '';
@@ -620,13 +620,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       return cleaned;
   };
 
-  // Calculamos la URL final basada en el input del usuario
   const finalBaseUrl = getCleanUrl(baseUrl);
   const finalLink = `${finalBaseUrl}?event=${activeEvent.publicToken || activeEvent.id}`;
+  
+  // Variables para la vista de escritorio y móvil
+  const mobilePos = localConfig.theme?.coverImagePositionY || 50;
+  const desktopPos = localConfig.theme?.coverImagePositionDesktopY ?? mobilePos;
 
+  // RENDER
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans text-gray-800">
       
+      {/* SIDEBAR */}
       <aside className="w-72 bg-gray-900 text-gray-300 flex flex-col shadow-2xl z-30 shrink-0">
         <div className="p-6 border-b border-gray-800">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -711,6 +716,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       </aside>
 
+      {/* MAIN CONTENT */}
       <main className="flex-1 overflow-y-auto relative bg-gray-50 flex flex-col">
         <header className="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shadow-sm">
             <div>
@@ -744,23 +750,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </header>
 
         <div className="p-8 max-w-7xl mx-auto w-full">
-          {/* El resto del contenido sigue igual */}
+          
           {/* --- TAB: APPEARANCE --- */}
           {activeTab === 'appearance' && (
              <div className="flex flex-col lg:flex-row gap-8 items-start">
-                <div className="flex-1 space-y-6 w-full max-w-4xl">
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                 <div className="flex-1 space-y-6 w-full max-w-4xl">
+                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                             <Image className="text-[#4f46e5]" /> Portada
                         </h3>
-                        <div className="relative group border-2 border-dashed border-gray-300 rounded-xl p-1 hover:border-[#4f46e5] transition-colors bg-gray-50 h-48">
+                        {/* DESKTOP PREVIEW BOX IN EDITOR */}
+                        <div className="relative group border-2 border-dashed border-gray-300 rounded-xl p-1 hover:border-[#4f46e5] transition-colors bg-gray-50 h-64">
                             {localConfig.coverImage ? (
                                 <div className="relative h-full rounded-lg overflow-hidden">
                                     <img 
                                         src={localConfig.coverImage} 
-                                        className="w-full h-full object-cover" 
+                                        className="w-full h-full object-cover transition-all duration-300" 
                                         style={{ 
-                                            objectPosition: `50% ${localConfig.theme?.coverImagePositionY || 50}%`,
+                                            objectPosition: `50% ${desktopPos}%`,
                                             filter: `blur(${localConfig.theme?.coverBlur || 0}px)` 
                                         }}
                                     />
@@ -770,6 +777,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <input type="file" className="hidden" onChange={handleBannerChange} accept="image/*" />
                                             </label>
                                     </div>
+                                    <div className="absolute top-2 right-2 bg-black/50 text-white text-[10px] px-2 py-1 rounded font-bold uppercase pointer-events-none">Vista Escritorio</div>
                                 </div>
                             ) : (
                                 <label className="flex flex-col items-center justify-center h-full cursor-pointer">
@@ -779,19 +787,52 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </label>
                             )}
                         </div>
-                        <div className="mt-4">
-                            <label className="text-xs font-bold text-gray-500 uppercase block mb-2">Posición Vertical (%)</label>
-                            <input 
-                                type="range" 
-                                min="0" 
-                                max="100" 
-                                value={localConfig.theme?.coverImagePositionY || 50} 
-                                onChange={(e) => updateLocalTheme('coverImagePositionY', Number(e.target.value))}
-                                className="w-full accent-[#4f46e5]"
-                            />
+
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                            {/* MOBILE SLIDER */}
+                            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                <label className="text-xs font-bold text-gray-500 uppercase block mb-3 flex items-center gap-2">
+                                    <Smartphone size={14} /> Posición Vertical (Móvil)
+                                </label>
+                                <input 
+                                    type="range" 
+                                    min="0" 
+                                    max="100" 
+                                    value={mobilePos} 
+                                    onChange={(e) => updateLocalTheme('coverImagePositionY', Number(e.target.value))}
+                                    className="w-full accent-[#4f46e5] h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                />
+                                <div className="flex justify-between mt-1 text-[10px] text-gray-400">
+                                    <span>Arriba</span>
+                                    <span>Centro ({mobilePos}%)</span>
+                                    <span>Abajo</span>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-2">Ajusta la vista en el teléfono de la derecha.</p>
+                            </div>
+
+                            {/* DESKTOP SLIDER */}
+                            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                <label className="text-xs font-bold text-gray-500 uppercase block mb-3 flex items-center gap-2">
+                                    <Monitor size={14} /> Posición Vertical (Escritorio)
+                                </label>
+                                <input 
+                                    type="range" 
+                                    min="0" 
+                                    max="100" 
+                                    value={desktopPos} 
+                                    onChange={(e) => updateLocalTheme('coverImagePositionDesktopY', Number(e.target.value))}
+                                    className="w-full accent-[#4f46e5] h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                />
+                                <div className="flex justify-between mt-1 text-[10px] text-gray-400">
+                                    <span>Arriba</span>
+                                    <span>Centro ({desktopPos}%)</span>
+                                    <span>Abajo</span>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-2">Ajusta la vista en el cuadro superior.</p>
+                            </div>
                         </div>
                     </div>
-
+                    
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                          <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                             <Palette className="text-[#4f46e5]" /> Colores Principales
@@ -878,9 +919,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                              </div>
                         </div>
                     </div>
-                </div>
-
-                <div className="hidden xl:block w-[350px] shrink-0">
+                 </div>
+                 
+                 <div className="hidden xl:block w-[350px] shrink-0">
                     <div className="sticky top-24 flex justify-center">
                         <MobilePreview config={localConfig} activePhotos={currentEventPhotos || []} />
                     </div>
@@ -888,7 +929,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
              </div>
           )}
           
-          {/* --- TAB: CATEGORIES --- */}
+          {/* ... Categorías ... */}
           {activeTab === 'categories' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
@@ -937,7 +978,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           )}
 
-          {/* --- TAB: GENERAL --- */}
+          {/* ... General ... */}
           {activeTab === 'general' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-6">
@@ -1008,6 +1049,52 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                    <input type="checkbox" checked={localConfig.allowDownloads} onChange={(e) => setLocalConfig({...localConfig, allowDownloads: e.target.checked})} className="w-5 h-5 accent-[#4f46e5]" />
                                </label>
                            </div>
+
+                           {/* SECCIÓN NUEVA: FORMATOS PERMITIDOS */}
+                           <div className="mt-4 pt-4 border-t border-gray-100">
+                               <label className="block text-xs font-bold text-gray-500 uppercase mb-3">Formatos Permitidos</label>
+                               <div className="flex gap-4">
+                                   {/* Photo Toggle */}
+                                   <label className={`flex-1 flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${localConfig.allowedMediaTypes?.includes('photo') ? 'bg-indigo-50 border-indigo-200' : 'hover:bg-gray-50'}`}>
+                                       <div className="flex items-center gap-2">
+                                           <ImageIcon size={18} className={localConfig.allowedMediaTypes?.includes('photo') ? 'text-indigo-600' : 'text-gray-400'} />
+                                           <span className="text-sm font-bold text-gray-700">Fotos</span>
+                                       </div>
+                                       <input 
+                                           type="checkbox" 
+                                           checked={localConfig.allowedMediaTypes?.includes('photo')} 
+                                           onChange={(e) => {
+                                                const isChecked = e.target.checked;
+                                                let newTypes = [...(localConfig.allowedMediaTypes || [])];
+                                                if (isChecked) newTypes.push('photo');
+                                                else newTypes = newTypes.filter(t => t !== 'photo');
+                                                setLocalConfig({ ...localConfig, allowedMediaTypes: newTypes });
+                                           }} 
+                                           className="w-4 h-4 accent-[#4f46e5]" 
+                                       />
+                                   </label>
+
+                                   {/* Video Toggle */}
+                                   <label className={`flex-1 flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${localConfig.allowedMediaTypes?.includes('video') ? 'bg-indigo-50 border-indigo-200' : 'hover:bg-gray-50'}`}>
+                                       <div className="flex items-center gap-2">
+                                           <Video size={18} className={localConfig.allowedMediaTypes?.includes('video') ? 'text-indigo-600' : 'text-gray-400'} />
+                                           <span className="text-sm font-bold text-gray-700">Videos</span>
+                                       </div>
+                                       <input 
+                                           type="checkbox" 
+                                           checked={localConfig.allowedMediaTypes?.includes('video')} 
+                                           onChange={(e) => {
+                                                const isChecked = e.target.checked;
+                                                let newTypes = [...(localConfig.allowedMediaTypes || [])];
+                                                if (isChecked) newTypes.push('video');
+                                                else newTypes = newTypes.filter(t => t !== 'video');
+                                                setLocalConfig({ ...localConfig, allowedMediaTypes: newTypes });
+                                           }} 
+                                           className="w-4 h-4 accent-[#4f46e5]" 
+                                       />
+                                   </label>
+                               </div>
+                           </div>
                       </div>
                   </div>
 
@@ -1039,10 +1126,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
           )}
 
-          {/* --- TAB: GALLERY --- */}
+          {/* ... Galería ... */}
           {activeTab === 'gallery' && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[calc(100vh-150px)]">
-                <div className="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4 shrink-0 bg-white z-20 sticky top-0">
+                 <div className="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4 shrink-0 bg-white z-20 sticky top-0">
                     <div className="flex items-center bg-gray-100 p-1 rounded-lg">
                         <button onClick={() => setGalleryView('active')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${galleryView === 'active' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Activa</button>
                         <button onClick={() => setGalleryView('archived')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${galleryView === 'archived' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Ocultos</button>
@@ -1105,13 +1192,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                     )}
                 </div>
-            </div>
+              </div>
           )}
-
-          {/* --- TAB: CLIENTS --- */}
+          
+          {/* ... Clients ... */}
           {activeTab === 'clients' && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
-                  <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                   <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
                       <UserCheck className="text-[#4f46e5]" /> Gestión de Cliente & Distribución
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
@@ -1121,7 +1208,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <input type="text" value={localConfig.clientName} onChange={(e) => setLocalConfig({...localConfig, clientName: e.target.value})} className="w-full p-4 bg-gray-800 text-white rounded-xl border border-gray-700 focus:ring-2 focus:ring-[#4f46e5] outline-none font-medium text-lg" />
                           </div>
                           
-                          {/* DOMINIO PERSONALIZADO INPUT */}
                           <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2">
                                     <Globe size={14} /> Dominio del Sitio (para QR y Enlaces)
@@ -1154,14 +1240,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
           )}
 
-          {/* --- TAB: PARTICIPANTS --- */}
+          {/* ... Participants ... */}
           {activeTab === 'participants' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 <div className="lg:col-span-4 space-y-6">
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                        <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
+                            <Ticket className="text-[#4f46e5]" />
+                            Capacidad del Evento
+                        </h3>
+                        <div className="space-y-2">
+                             <label className="block text-sm font-bold text-gray-700">Límite Máximo de Invitados</label>
+                             <div className="relative">
+                                <input 
+                                    type="number" 
+                                    value={localConfig.participantsCount || 0}
+                                    onChange={(e) => setLocalConfig({...localConfig, participantsCount: Number(e.target.value)})}
+                                    className="w-full pl-4 pr-12 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none font-bold"
+                                    min="0"
+                                />
+                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">PERS</span>
+                             </div>
+                             <p className="text-[11px] text-gray-500 leading-tight pt-1">
+                                 Si estableces este valor en <strong>0</strong>, el evento tendrá acceso ilimitado. Si pones <strong>25</strong>, el usuario 26 no podrá subir fotos.
+                             </p>
+                        </div>
+                    </div>
+
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                             <UserPlus className="text-[#4f46e5]" />
-                            Registrar
+                            Registrar Manualmente
                         </h3>
                         <div className="space-y-4">
                             <div>

@@ -227,6 +227,11 @@ const resizeImage = (file: File, maxWidth: number, quality: number): Promise<Fil
             canvas.height = height;
             const ctx = canvas.getContext('2d');
             if (!ctx) { resolve(file); return; }
+            
+            // Mejora de calidad de renderizado
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            
             ctx.drawImage(img, 0, 0, width, height);
             canvas.toBlob((blob) => {
                 URL.revokeObjectURL(url);
@@ -276,11 +281,15 @@ export const processAndUploadPhoto = async (
   } else {
       try {
           const webpName = sanitizedName.replace(/\.[^/.]+$/, "") + ".webp";
-          // Ajuste de Calidad: 0.80 para principal y 0.50 para thumb es suficiente para WebP
-          const mainImg = await resizeImage(file, 1920, 0.80); 
+          
+          // CONFIGURACIÓN DE COSTO/CALIDAD OPTIMIZADA:
+          // Imagen Principal: 2500px ancho, 90% calidad (Equilibrio perfecto HD/Peso).
+          const mainImg = await resizeImage(file, 2500, 0.90); 
           mainUrl = await uploadFileToFirebase(mainImg, `eventos/${eventId}/${userIdFolder}/${timestamp}_${webpName}`);
 
-          const thumbImg = await resizeImage(file, 500, 0.50); 
+          // Thumbnail (Galería): 1200px ancho, 80% calidad.
+          // Reduce drásticamente el peso de carga inicial de la galería sin pixelado.
+          const thumbImg = await resizeImage(file, 1200, 0.80); 
           thumbUrl = await uploadFileToFirebase(thumbImg, `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${timestamp}_${webpName}`);
       } catch (e) {
           console.warn("Fallback JPEG", e);

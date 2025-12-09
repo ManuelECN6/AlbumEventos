@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Lightbox } from './components/Lightbox';
 import { UploadModal } from './components/UploadModal';
@@ -39,7 +41,8 @@ import {
   ChevronDown,
   Check,
   CheckCircle,
-  Package
+  Package,
+  Users
 } from 'lucide-react';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
@@ -56,7 +59,7 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     categories: [{ id: 'c1', name: 'General', color: '#3b82f6' }],
     allowUploads: true,
     allowDownloads: false, 
-    allowedMediaTypes: ['photo'],
+    allowedMediaTypes: ['photo', 'video'],
     storageLimit: 100,
     maxPhotosPerPerson: 25,
     maxVideosPerPerson: 5,
@@ -291,11 +294,17 @@ export default function App() {
     (activeEvent.participants || []).filter(p => p.status === 'confirmed'), 
   [activeEvent.participants]);
 
+  // NUEVA LÓGICA DE VISUALIZACIÓN DE CUPO
   const remainingSpotsDisplay = useMemo(() => {
-      const totalCapacity = activeEvent.participantsCount || 0;
-      const currentRegistered = activeParticipants.length;
-      const remaining = Math.max(0, totalCapacity - currentRegistered);
-      return `${remaining}/${totalCapacity}`;
+      const limit = activeEvent.participantsCount || 0;
+      const current = activeParticipants.length;
+      
+      // Si el límite es 0, mostramos solo el número actual (sin texto "Ilimitado")
+      if (limit === 0) {
+          return `${current}`;
+      }
+      // Si hay límite, mostramos formato X/Y
+      return `${current}/${limit}`;
   }, [activeEvent.participantsCount, activeParticipants]);
 
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
@@ -767,12 +776,8 @@ export default function App() {
                         <span>Likes</span>
                     </div>
                     <div className="flex flex-col items-center">
-                        <span className="text-lg leading-none">{activeParticipants.length}</span>
-                        <span>Participantes</span>
-                    </div>
-                    <div className="flex flex-col items-center">
                         <span className="text-lg leading-none">{remainingSpotsDisplay}</span>
-                        <span>Restantes</span>
+                        <span>Invitados</span>
                     </div>
                 </div>
                 </div>
