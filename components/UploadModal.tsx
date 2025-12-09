@@ -185,16 +185,32 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
     let duplicateCount = 0;
     let photosRejectedByLimit = 0;
     let videosRejectedByLimit = 0;
+    let totalEventLimitExceeded = false;
+
+    // Calcular uso actual del evento
+    const currentEventUsage = event.totalUsageBytes || 0;
+    const eventLimitBytes = (event.totalEventSizeLimitGB || 5) * 1024 * 1024 * 1024;
 
     // We start counting from what is currently selected in THIS session
     let currentSessionPhotoCount = selectedFiles.filter(f => f.type.startsWith('image/')).length;
     let currentSessionVideoCount = selectedFiles.filter(f => f.type.startsWith('video/') || f.type === 'video/quicktime').length;
+    
+    // Calcular tamaño acumulado de la sesión actual
+    let currentSessionBytes = selectedFiles.reduce((acc, f) => acc + f.size, 0);
 
     Array.from(fileList).forEach(file => {
+      if (totalEventLimitExceeded) return;
+
       const isVideo = file.type.startsWith('video/') || file.type === 'video/quicktime';
       const isPhoto = file.type.startsWith('image/');
       
-      // 1. Check Type
+      // 1. Check Global Event Size Limit
+      if ((currentEventUsage + currentSessionBytes + file.size) > eventLimitBytes) {
+          totalEventLimitExceeded = true;
+          return;
+      }
+
+      // 2. Check Type
       let isAllowedType = false;
       if (isPhoto && event.allowedMediaTypes.includes('photo')) {
           isAllowedType = ALLOWED_IMAGE_TYPES.includes(file.type);
@@ -207,7 +223,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
         return;
       }
 
-      // 2. Check Size Limits
+      // 3. Check Size Limits
       if (isVideo) {
           if (file.size > MAX_VIDEO_BYTES) {
               videoOversizedCount++;
@@ -221,7 +237,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
           }
       }
 
-      // 3. Check Duplicates
+      // 4. Check Duplicates
       const isDuplicate = selectedFiles.some(f => f.name === file.name && f.size === file.size) || 
                           newFiles.some(f => f.name === file.name && f.size === file.size);
       if (isDuplicate) {
@@ -229,12 +245,13 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
         return;
       }
 
-      // 4. Check Quantity Limits per Person
+      // 5. Check Quantity Limits per Person
       if (isPhoto) {
         // CHECK LIMIT: Previous Uploads + Current Session Uploads < Max
         if ((previousUserPhotos + currentSessionPhotoCount) < event.maxPhotosPerPerson) {
           newFiles.push(file);
           currentSessionPhotoCount++;
+          currentSessionBytes += file.size;
         } else {
           photosRejectedByLimit++;
         }
@@ -243,6 +260,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
         if ((previousUserVideos + currentSessionVideoCount) < event.maxVideosPerPerson) {
           newFiles.push(file);
           currentSessionVideoCount++;
+          currentSessionBytes += file.size;
         } else {
           videosRejectedByLimit++;
         }
@@ -251,7 +269,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
 
     // Construcción de mensajes de error inteligentes
     let errorMessages: string[] = [];
-
+    
+    if (totalEventLimitExceeded) {
+        errorMessages.push(`• El álbum ha alcanzado su límite total de almacenamiento (${event.totalEventSizeLimitGB}GB). No caben más archivos.`);
+    }
     if (videoOversizedCount > 0) {
         errorMessages.push(`• ${videoOversizedCount} video(s) exceden el límite de ${MAX_VIDEO_MB}MB.`);
     }
@@ -324,16 +345,24 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
       return;
     }
 
-    // --- NUEVA VALIDACIÓN: CAPACIDAD DEL EVENTO ---
+    // --- NUEVA VALIDACIÓN: CAPACIDAD DEL EVENTO (PERSONAS) ---
     const capacityLimit = event.participantsCount || 0;
-    // Si hay límite y el usuario NO está registrado previamente, validamos el cupo
     if (capacityLimit > 0 && !existingUserInEvent) {
-         // Calculamos ocupación actual (basado en participantes confirmados en memoria local del evento)
          const currentOccupancy = event.participants?.length || 0;
          if (currentOccupancy >= capacityLimit) {
              setError("Lo sentimos, este álbum ha alcanzado el límite máximo de invitados permitidos.");
              return;
          }
+    }
+    
+    // --- NUEVA VALIDACIÓN: CAPACIDAD DEL EVENTO (GB) FINAL CHECK ---
+    const currentEventUsage = event.totalUsageBytes || 0;
+    const eventLimitBytes = (event.totalEventSizeLimitGB || 5) * 1024 * 1024 * 1024;
+    const uploadTotalSize = selectedFiles.reduce((acc, f) => acc + f.size, 0);
+
+    if (currentEventUsage + uploadTotalSize > eventLimitBytes) {
+        setError(`No hay suficiente espacio libre en el álbum. Límite: ${event.totalEventSizeLimitGB}GB`);
+        return;
     }
 
     setIsUploading(true);

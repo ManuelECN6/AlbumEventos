@@ -1,3 +1,4 @@
+
 import { db, storage } from '../firebaseConfig';
 import { 
   collection, 
@@ -22,7 +23,8 @@ import {
   ref, 
   uploadBytes, 
   getDownloadURL, 
-  deleteObject 
+  deleteObject,
+  getMetadata
 } from 'firebase/storage';
 import { EventConfig, Photo } from '../types';
 
@@ -249,7 +251,7 @@ const resizeImage = (file: File, maxWidth: number, quality: number): Promise<Fil
 };
 
 /**
- * PROCESAR Y SUBIR FOTO -> AHORA GUARDA EN SUBCOLECCIÓN
+ * PROCESAR Y SUBIR FOTO -> AHORA GUARDA EN SUBCOLECCIÓN Y ACTUALIZA USO TOTAL
  */
 export const processAndUploadPhoto = async (
   file: File, 
@@ -262,8 +264,8 @@ export const processAndUploadPhoto = async (
   
   // 1. Validaciones
   const isVideo = file.type.startsWith('video/') || file.type === 'video/quicktime';
-  if (isVideo && file.size > 100 * 1024 * 1024) { // 100MB Hard limit
-      throw new Error("Video excede 100MB.");
+  if (isVideo && file.size > 2048 * 1024 * 1024) { // 2GB Safety Hard limit
+      throw new Error("Video excede el límite de seguridad.");
   }
 
   const timestamp = Date.now();
@@ -273,11 +275,13 @@ export const processAndUploadPhoto = async (
 
   // 2. Subida a Storage (Caché + WebP)
   let mainUrl = '', thumbUrl = '';
+  let finalSize = 0;
   
   if (isVideo) {
       const path = `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedName}`;
       mainUrl = await uploadFileToFirebase(file, path);
       thumbUrl = mainUrl; 
+      finalSize = file.size; // El video se sube tal cual
   } else {
       try {
           const webpName = sanitizedName.replace(/\.[^/.]+$/, "") + ".webp";
@@ -286,15 +290,19 @@ export const processAndUploadPhoto = async (
           // Imagen Principal: 2500px ancho, 90% calidad (Equilibrio perfecto HD/Peso).
           const mainImg = await resizeImage(file, 2500, 0.90); 
           mainUrl = await uploadFileToFirebase(mainImg, `eventos/${eventId}/${userIdFolder}/${timestamp}_${webpName}`);
+          finalSize = mainImg.size; // Usamos el tamaño de la imagen optimizada
 
           // Thumbnail (Galería): 1200px ancho, 80% calidad.
           // Reduce drásticamente el peso de carga inicial de la galería sin pixelado.
           const thumbImg = await resizeImage(file, 1200, 0.80); 
           thumbUrl = await uploadFileToFirebase(thumbImg, `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${timestamp}_${webpName}`);
+          // Nota: No sumamos el thumbnail al consumo total del cliente para ser amigables, 
+          // pero en facturación real de Firebase sí cuenta.
       } catch (e) {
           console.warn("Fallback JPEG", e);
           mainUrl = await uploadFileToFirebase(file, `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedName}`);
           thumbUrl = mainUrl;
+          finalSize = file.size;
       }
   }
 
@@ -313,12 +321,18 @@ export const processAndUploadPhoto = async (
     createdAt: new Date().toISOString(),
     author: { name: authorName, initials: authorName.substring(0, 2).toUpperCase(), avatarColor: authorColor },
     type: isVideo ? 'video' : 'photo',
-    deviceId: deviceId
+    deviceId: deviceId,
+    size: finalSize // Guardamos el tamaño para futuras referencias
   };
 
-  // 4. GUARDAR EN SUBCOLECCIÓN (La parte clave de la escalabilidad)
-  // events/{eventId}/photos/{photoId}
+  // 4. GUARDAR EN SUBCOLECCIÓN
   await setDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId), newPhoto);
+
+  // 5. ACTUALIZAR CONTADOR GLOBAL DE USO DEL EVENTO
+  const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+  await updateDoc(eventRef, {
+      totalUsageBytes: increment(finalSize)
+  });
 
   return newPhoto;
 };
@@ -453,4 +467,43 @@ export const getEvent = async (eventId: string): Promise<EventConfig | null> => 
     console.error("Error fetching event:", error);
     throw error;
   }
+};
+
+// --- NUEVA FUNCIÓN: Recalcular uso total de almacenamiento ---
+export const recalculateEventStorageUsage = async (eventId: string, photos: Photo[]) => {
+    let totalBytes = 0;
+    console.log("Iniciando recálculo de almacenamiento...");
+
+    // Procesamos en paralelo para mayor velocidad
+    const promises = photos.map(async (photo) => {
+        // 1. Si ya tiene size, lo usamos
+        if (photo.size && photo.size > 0) {
+            return photo.size;
+        }
+
+        // 2. Si no tiene size (archivo antiguo), preguntamos a Storage
+        try {
+            if (!photo.url) return 0;
+            // Extraer referencia desde la URL o crear ref directa si es posible
+            const storageRef = ref(storage, photo.url);
+            const metadata = await getMetadata(storageRef);
+            
+            // Opcional: Actualizar el documento de la foto con el tamaño para no preguntar de nuevo
+            // (Hacemos esto "fire and forget" para no bloquear)
+            updatePhotoField(eventId, photo.id, 'size', metadata.size).catch(e => console.warn("No se pudo actualizar size en doc", e));
+            
+            return metadata.size;
+        } catch (error) {
+            console.warn(`No se pudo obtener metadata para foto ${photo.id}:`, error);
+            return 0; // Si falla (ej. borrado manual), asumimos 0
+        }
+    });
+
+    const sizes = await Promise.all(promises);
+    totalBytes = sizes.reduce((acc, size) => acc + size, 0);
+
+    // Actualizar el evento
+    await updateEventFieldInFirebase(eventId, 'totalUsageBytes', totalBytes);
+    
+    return totalBytes;
 };

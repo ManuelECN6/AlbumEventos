@@ -1,3 +1,4 @@
+
 export interface Category {
   id: string;
   name: string;
@@ -33,6 +34,7 @@ export interface Photo {
   };
   type?: 'photo' | 'video';
   deviceId?: string; // ID to identify the uploader/device
+  size?: number; // Size in bytes
 }
 
 export interface AlbumSection {
@@ -93,10 +95,15 @@ export interface EventConfig {
   allowUploads: boolean;
   allowDownloads?: boolean; // Nuevo campo: Permite descargas a invitados
   allowedMediaTypes: ('photo' | 'video')[];
-  storageLimit: number;
+  storageLimit: number; // Max MB per Single Photo
   maxPhotosPerPerson: number;
   maxVideosPerPerson: number;
   maxVideoSizeMB?: number;
+  
+  // Nuevos campos para límite global del evento
+  totalEventSizeLimitGB?: number; // Límite total en GB (ej: 10)
+  totalUsageBytes?: number; // Consumo actual en Bytes
+  
   clientName: string;
   downloadPassword: string;
   publicToken: string;

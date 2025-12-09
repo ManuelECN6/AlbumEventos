@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Lightbox } from './components/Lightbox';
 import { UploadModal } from './components/UploadModal';
@@ -47,7 +46,7 @@ import {
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
 
-// --- PLANTILLA POR DEFECTO ---
+// --- PLANTILLA POR DEFECTO (CONFIGURACIÓN BLAZE / ALTA CAPACIDAD) ---
 const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     id: '',
     title: 'Nuevo Evento',
@@ -60,10 +59,12 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     allowUploads: true,
     allowDownloads: false, 
     allowedMediaTypes: ['photo', 'video'],
-    storageLimit: 100,
-    maxPhotosPerPerson: 25,
-    maxVideosPerPerson: 5,
-    maxVideoSizeMB: 50,
+    storageLimit: 100, // Max MB por Foto
+    maxPhotosPerPerson: 50, 
+    maxVideosPerPerson: 10, 
+    maxVideoSizeMB: 512, 
+    totalEventSizeLimitGB: 5, // 5GB Límite Global por defecto
+    totalUsageBytes: 0,
     clientName: 'Cliente Nuevo',
     downloadPassword: Math.random().toString(36).slice(-6),
     publicToken: '',

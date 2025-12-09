@@ -8,8 +8,9 @@ service firebase.storage {
       // 2. Creación (Subir archivos)
       // Se permite SOLO si:
       // - El archivo es una imagen o video
-      // - El tamaño es menor a 100MB (Seguridad contra ataques de costos)
-      allow create: if request.resource.size < 100 * 1024 * 1024 
+      // - El tamaño es menor a 2GB (2048 MB) para permitir videos HD sin problemas.
+      // NOTA: El límite real por evento se controla desde la UI (App.tsx), esto es solo el tope de seguridad.
+      allow create: if request.resource.size < 2048 * 1024 * 1024 
                     && (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('video/.*'));
       
       // 3. Edición/Sobrescritura: BLOQUEADA
