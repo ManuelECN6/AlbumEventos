@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
-import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Heart, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Info, Monitor, Clipboard, Globe, AlertTriangle, Terminal, Copy, Menu, ChevronRight, Command } from 'lucide-react';
+import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Heart, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Info, Monitor, Clipboard, Globe, AlertTriangle, Terminal, Copy, Menu, ChevronRight, Command, CloudLightning } from 'lucide-react';
 import { uploadFileToFirebase } from '../services/firebaseService';
 import { GoogleDriveImporter } from './GoogleDriveImporter';
 import QRCode from "react-qr-code";
@@ -352,8 +352,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [participantSearch, setParticipantSearch] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#3b82f6');
-  const [showRunAppWarning, setShowRunAppWarning] = useState(false);
-  const [deployCommandCopied, setDeployCommandCopied] = useState(false);
 
   // Estado para gestionar el dominio base (Localhost vs Dominio Personalizado)
   const [baseUrl, setBaseUrl] = useState(() => {
@@ -375,13 +373,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       }
       return '';
   });
-
-  // Check for .run.app to show warning
-  useEffect(() => {
-      if (typeof window !== 'undefined' && window.location.hostname.includes('.run.app')) {
-          setShowRunAppWarning(true);
-      }
-  }, []);
 
   // Guardar preferencia de dominio si cambia
   useEffect(() => {
@@ -752,62 +743,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
         </header>
 
-        {showRunAppWarning && (
-            <div className="bg-orange-50 border-b border-orange-200 px-8 py-4 animate-fade-in shadow-sm">
-                <div className="flex flex-col md:flex-row items-center justify-between gap-4 max-w-5xl mx-auto">
-                    <div className="flex items-start gap-4 flex-1">
-                        <div className="bg-orange-100 p-2 rounded-full text-orange-600 shrink-0">
-                            <AlertTriangle size={24} />
-                        </div>
-                        <div className="flex-1">
-                            <h3 className="font-bold text-orange-900 text-lg">⚠️ Truco Secreto para Desplegar</h3>
-                            <p className="text-orange-800 text-sm mb-2">
-                                ¿No encuentras la terminal? En Google AI Studio/IDX a veces está oculta.
-                            </p>
-                            
-                            <div className="bg-white p-4 rounded-lg border border-orange-200 shadow-sm mt-2 flex flex-col gap-3">
-                                <p className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                    <Command size={16} /> Opción 1: El Menú de Comandos (Recomendado)
-                                </p>
-                                <ul className="text-sm text-gray-600 list-disc ml-6 space-y-1">
-                                    <li>Presiona <strong>Ctrl + Shift + P</strong> (o Cmd + Shift + P en Mac).</li>
-                                    <li>Escribe "Terminal" y selecciona <strong>"Create New Terminal"</strong>.</li>
-                                    <li>Pega el comando: <code className="bg-gray-100 px-2 py-1 rounded font-mono font-bold">firebase deploy --only hosting</code></li>
-                                </ul>
-
-                                <div className="border-t border-gray-100 my-1"></div>
-
-                                <p className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                    <Terminal size={16} /> Opción 2: Forzar Actualización
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                    He actualizado el archivo <code>firebase.json</code> por ti. A veces, simplemente recargar la página del editor fuerza al sistema a detectar la nueva configuración.
-                                </p>
-
-                                <div className="flex items-center gap-2 mt-2">
-                                    <code className="font-mono bg-gray-100 px-3 py-2 rounded text-gray-800 border border-gray-300 flex-1 select-all font-bold text-sm">
-                                        firebase deploy --only hosting
-                                    </code>
-                                    <button 
-                                        onClick={() => {
-                                            navigator.clipboard.writeText('firebase deploy --only hosting');
-                                            setDeployCommandCopied(true);
-                                            setTimeout(() => setDeployCommandCopied(false), 2000);
-                                        }}
-                                        className="bg-orange-600 text-white px-4 py-2 rounded font-bold hover:bg-orange-700 transition-colors flex items-center gap-2 text-xs h-full"
-                                    >
-                                        {deployCommandCopied ? <Check size={14} /> : <Copy size={14} />}
-                                        Copiar Comando
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <button onClick={() => setShowRunAppWarning(false)} className="text-orange-400 hover:text-orange-800 p-2 self-start"><XIcon size={20} /></button>
-                </div>
-            </div>
-        )}
-
         <div className="p-8 max-w-7xl mx-auto w-full">
           {/* El resto del contenido sigue igual */}
           {/* --- TAB: APPEARANCE --- */}
@@ -1115,6 +1050,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
 
                     <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 text-xs font-bold text-green-600 bg-green-50 px-3 py-1.5 rounded-full mr-2 border border-green-100 animate-pulse">
+                            <CloudLightning size={14} />
+                            Sincronizado: {displayedPhotos.length}
+                        </div>
+                        
                         <GoogleDriveImporter onFilesSelected={onDriveImport} isProcessing={isProcessing} />
                         {selectedIds.length > 0 && (
                              <div className="flex items-center gap-2 animate-fade-in">

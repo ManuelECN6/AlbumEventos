@@ -95,6 +95,9 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
 
 export default function App() {
   const [events, setEvents] = useState<EventConfig[]>([]);
+  // Nuevo estado para guardar los datos COMPLETOS del evento activo en modo admin
+  const [adminActiveEventData, setAdminActiveEventData] = useState<EventConfig | null>(null);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [deviceId, setDeviceId] = useState<string>('');
@@ -134,10 +137,10 @@ export default function App() {
       const urlEventToken = params.get('event');
 
       // LÓGICA CRÍTICA DE COSTOS:
-      // Si es Admin -> Carga toda la lista (subscribeToEvents)
-      // Si es Visitante -> Carga SOLO 1 evento (subscribeToVisitorEvent) - Ahorro de lecturas
+      // Si es Admin -> Carga toda la lista (subscribeToEvents) PERO ligera (sin fotos)
+      // Si es Visitante -> Carga SOLO 1 evento (subscribeToVisitorEvent) completo
       if (isAdminMode) {
-          console.log("Modo Admin: Cargando lista completa...");
+          console.log("Modo Admin: Cargando lista de eventos...");
           unsubscribe = subscribeToEvents((fetchedEvents) => {
               setEvents(fetchedEvents);
               setIsLoading(false);
@@ -156,6 +159,24 @@ export default function App() {
   }, [isAdminMode]);
 
   const [currentEventId, setCurrentEventId] = useState<string | null>(null);
+
+  // --- NUEVA LÓGICA: Suscripción a detalle en Modo Admin ---
+  // Cuando el admin selecciona un evento, nos suscribimos a su versión COMPLETA (con subcolección de fotos)
+  // para poder ver las fotos nuevas en la galería del admin.
+  useEffect(() => {
+      if (isAdminMode && currentEventId) {
+          console.log(`Modo Admin: Suscribiendo a detalles del evento ${currentEventId}...`);
+          const unsubscribeDetail = subscribeToVisitorEvent(currentEventId, (fetchedEvents) => {
+              if (fetchedEvents && fetchedEvents.length > 0) {
+                  // Actualizamos el estado separado para datos detallados
+                  setAdminActiveEventData(fetchedEvents[0]);
+              }
+          });
+          return () => unsubscribeDetail();
+      } else {
+          setAdminActiveEventData(null);
+      }
+  }, [isAdminMode, currentEventId]);
   
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -196,9 +217,15 @@ export default function App() {
       setDownloadSelection(new Set());
   }, [currentEventId]);
 
-  const activeEvent = useMemo(() => 
-    events.find(e => e.id === currentEventId) || events[0] || DEFAULT_EVENT_TEMPLATE
-  , [events, currentEventId]);
+  // CALCULO DEL EVENTO ACTIVO:
+  // Si estamos en admin y tenemos datos detallados (con fotos nuevas), usamos eso.
+  // Si no, usamos la lista general.
+  const activeEvent = useMemo(() => {
+    if (isAdminMode && adminActiveEventData && adminActiveEventData.id === currentEventId) {
+        return adminActiveEventData;
+    }
+    return events.find(e => e.id === currentEventId) || events[0] || DEFAULT_EVENT_TEMPLATE;
+  }, [events, currentEventId, isAdminMode, adminActiveEventData]);
 
   // SYNC PARTICIPANTS LOGIC
   useEffect(() => {
@@ -579,6 +606,7 @@ export default function App() {
       <AdminPanel 
         events={events}
         currentEventId={activeEvent.id}
+        // Pasamos las fotos completas (incluyendo subcolecciones) al Panel
         currentEventPhotos={photos} 
         isProcessing={isProcessing}
         onUpdateEvent={handleUpdateEvent}

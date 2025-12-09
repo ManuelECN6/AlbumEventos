@@ -78,8 +78,8 @@ export const subscribeToVisitorEvent = (identifier: string | null, callback: (ev
 
       // Suscribirse a la SUBCOLECCIÓN de fotos (Nuevas)
       const photosColRef = collection(db, EVENTS_COLLECTION, eventId, 'photos');
-      // Ordenamos por fecha de creación si es posible
-      const qPhotos = query(photosColRef); // Puedes añadir orderBy('createdAt', 'desc') si indexas
+      // Ordenamos por fecha de creación descendente para que aparezcan primero las nuevas
+      const qPhotos = query(photosColRef, orderBy('createdAt', 'desc'));
 
       if (photoUnsubscribe) photoUnsubscribe();
 
