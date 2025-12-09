@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
-import { Save, Plus, Trash, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Heart, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Info, Monitor, Clipboard, Globe, AlertTriangle, Terminal, Copy, Menu, ChevronRight, Command, CloudLightning, Ticket, Smartphone, Video, Image as ImageIcon, Database, RefreshCw, Zap } from 'lucide-react';
+import { Save, Plus, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Smartphone, Monitor, CloudLightning, Ticket, Video, Image as ImageIcon, RefreshCw, AlertTriangle } from 'lucide-react';
 import { uploadFileToFirebase, recalculateEventStorageUsage } from '../services/firebaseService';
 import { GoogleDriveImporter } from './GoogleDriveImporter';
 import QRCode from "react-qr-code";
@@ -299,8 +299,8 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
 
                                 <div className="p-2 border-t" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
                                     <div className="flex items-center gap-1 text-[10px] font-medium" style={{ color: theme.cardTextColor }}>
-                                        <Heart size={12} />
-                                        <span>{photo.likes}</span>
+                                        {/* <Heart size={12} /> */}
+                                        <span>{photo.likes} Likes</span>
                                     </div>
                                 </div>
                             </div>
@@ -1226,7 +1226,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           
                           <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2">
-                                    <Globe size={14} /> Dominio del Sitio (para QR y Enlaces)
+                                    <ExternalLink size={14} /> Dominio del Sitio (para QR y Enlaces)
                                </label>
                                <input 
                                     type="text" 
