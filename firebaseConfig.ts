@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 // Configuración de tu proyecto "Album"
@@ -17,5 +17,8 @@ export const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Exportar los servicios de Base de Datos y Almacenamiento para usarlos en la app
-export const db = getFirestore(app);
+// Usamos initializeFirestore con long polling forzado para evitar timeouts de conexión (Error de 10s)
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+});
 export const storage = getStorage(app);
