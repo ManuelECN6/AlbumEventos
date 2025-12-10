@@ -666,7 +666,19 @@ export default function App() {
               <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 text-gray-600 bg-gray-100 rounded-full"><Lock size={32} /></div>
               <h2 className="text-2xl font-bold text-gray-800">Acceso Admin</h2>
             </header>
-            <form onSubmit={(e) => { e.preventDefault(); if(passwordInput === 'admin') { setIsAdminMode(true); setShowLoginModal(false); } else { setLoginError(true); }}}>
+            <form onSubmit={(e) => { 
+                e.preventDefault(); 
+                if(passwordInput === 'admin') { 
+                    if (typeof window !== 'undefined') {
+                        // Limpiar la URL para quitar el ?event=... y evitar que la app crea que seguimos en modo visitante
+                        window.history.replaceState({}, '', window.location.pathname);
+                    }
+                    setIsAdminMode(true); 
+                    setShowLoginModal(false); 
+                } else { 
+                    setLoginError(true); 
+                }
+            }}>
               <input 
                 type="password" 
                 value={passwordInput}
