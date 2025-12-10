@@ -603,8 +603,8 @@ export default function App() {
 
   if (isLoading) {
       return (
-          <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
-              <Loader2 size={48} className="animate-spin text-blue-500 mb-4" />
+          <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 MV-loader-container">
+              <Loader2 size={48} className="mb-4 text-blue-500 animate-spin" />
               <p className="text-gray-500">Conectando con el Álbum...</p>
           </div>
       );
@@ -641,9 +641,9 @@ export default function App() {
   const desktopPos = theme.coverImagePositionDesktopY ?? mobilePos;
 
   return (
-    // RESTAURACIÓN DE CLASES TAILWIND + MARCADORES MV-
-    <div 
-        className={`MV-layout-base ${fontClass} min-h-screen pb-8 relative font-sans transition-colors duration-500 select-none`}
+    // ESTRUCTURA PRINCIPAL RENOMBRADA A 'MAIN' EN LUGAR DE 'DIV' PARA DIFERENCIACIÓN
+    <main 
+        className={`MV-layout-raiz ${fontClass} min-h-screen pb-8 relative font-sans transition-colors duration-500 select-none bg-album-bg`}
         style={{ backgroundColor: theme.backgroundColor, color: theme.textColor }}
     >
       <style>{`
@@ -658,47 +658,47 @@ export default function App() {
       `}</style>
       
       {showLoginModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <section className="fixed inset-0 z-50 flex items-center justify-center p-4 MV-modal-acceso">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowLoginModal(false)} />
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 relative z-10 animate-fade-in-up">
+          <div className="relative z-10 w-full max-w-sm p-8 bg-white shadow-2xl rounded-2xl animate-fade-in-up">
             <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X size={20} /></button>
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-600"><Lock size={32} /></div>
+            <header className="mb-6 text-center">
+              <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 text-gray-600 bg-gray-100 rounded-full"><Lock size={32} /></div>
               <h2 className="text-2xl font-bold text-gray-800">Acceso Admin</h2>
-            </div>
+            </header>
             <form onSubmit={(e) => { e.preventDefault(); if(passwordInput === 'admin') { setIsAdminMode(true); setShowLoginModal(false); } else { setLoginError(true); }}}>
               <input 
                 type="password" 
                 value={passwordInput}
                 onChange={(e) => { setPasswordInput(e.target.value); setLoginError(false); }}
                 placeholder="Contraseña (admin)"
-                className={`w-full px-4 py-3 rounded-lg border ${loginError ? 'border-red-300 bg-red-50' : 'border-gray-300 bg-gray-50'} outline-none focus:ring-2 mb-4 text-center`}
+                className={`w-full px-4 py-3 mb-4 text-center border rounded-lg outline-none focus:ring-2 ${loginError ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-300'}`}
                 autoFocus
               />
-              <button type="submit" className="w-full bg-gray-900 text-white font-bold py-3 rounded-lg">Entrar</button>
+              <button type="submit" className="w-full py-3 font-bold text-white bg-gray-900 rounded-lg">Entrar</button>
             </form>
           </div>
-        </div>
+        </section>
       )}
 
       {isDownloadSelectionMode && (
-          <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-xl p-4 animate-slide-up">
-              <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-white border-t border-gray-200 shadow-xl MV-barra-seleccion animate-slide-up">
+              <div className="flex items-center justify-between max-w-4xl mx-auto">
                   <div className="flex items-center gap-4">
                       <button 
                           onClick={() => { setIsDownloadSelectionMode(false); setDownloadSelection(new Set()); }}
-                          className="text-gray-500 font-medium hover:text-gray-800 transition-colors"
+                          className="font-medium text-gray-500 transition-colors hover:text-gray-800"
                       >
                           Cancelar
                       </button>
-                      <span className="text-sm font-bold text-gray-700 bg-gray-100 px-3 py-1 rounded-full">
+                      <span className="px-3 py-1 text-sm font-bold text-gray-700 bg-gray-100 rounded-full">
                           {downloadSelection.size} seleccionados
                       </span>
                   </div>
                   <button 
                       onClick={handleDownloadSelectedFiles}
                       disabled={downloadSelection.size === 0 || isZippingSelected}
-                      className="bg-blue-600 text-white px-6 py-2.5 rounded-full font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex items-center gap-2 px-6 py-2.5 font-bold text-white transition-all bg-blue-600 rounded-full shadow-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                       {isZippingSelected ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
                       {isZippingSelected ? 'Procesando...' : `Descargar (${downloadSelection.size})`}
@@ -707,20 +707,20 @@ export default function App() {
           </div>
       )}
 
-      {/* PORTADA Y CABECERA */}
-      <div className="MV-portada-contenedor relative mb-8 group overflow-hidden">
+      {/* PORTADA Y CABECERA (Refactorizado con etiquetas semánticas) */}
+      <section className="relative mb-8 overflow-hidden group MV-seccion-portada">
         {activeEvent.coverImage && (
-            <div className="absolute inset-0 z-0 overflow-hidden h-full w-full">
+            <figure className="absolute inset-0 z-0 w-full h-full overflow-hidden MV-contenedor-imagen">
                  <img 
                     src={activeEvent.coverImage} 
-                    className="w-full h-full object-cover transition-all duration-500 custom-cover-position" 
+                    className="w-full h-full transition-all duration-500 object-cover custom-cover-position" 
                     alt="Cover" 
                     style={{ 
                         filter: `blur(${theme.coverBlur || 0}px)` 
                     }}
                     onContextMenu={(e) => e.preventDefault()}
                  />
-            </div>
+            </figure>
         )}
         
         <div 
@@ -728,17 +728,17 @@ export default function App() {
             style={{ backgroundColor: hexToRgba(theme.coverOverlayColor || '#000000', theme.coverOverlayOpacity ?? 0.4) }}
         />
 
-        <header className={`MV-nav-contenedor relative z-10 max-w-6xl mx-auto animate-fade-in ${activeEvent.coverImage ? 'py-12 px-4 md:px-8' : 'pt-8 px-4 md:px-8'}`}>
-            <div className="MV-nav-flex flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <header className={`MV-nav-main relative z-10 max-w-6xl mx-auto animate-fade-in ${activeEvent.coverImage ? 'py-12 px-4 md:px-8' : 'pt-8 px-4 md:px-8'}`}>
+            <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center MV-nav-contenido">
             <div className="flex items-start gap-4">
                 
                 {theme.avatarImage ? (
-                    <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-white/20 shadow-sm shrink-0">
-                        <img src={theme.avatarImage} alt="Logo" className="w-full h-full object-cover pointer-events-none" />
+                    <div className="flex-shrink-0 w-16 h-16 overflow-hidden border-2 rounded-full shadow-sm border-white/20 MV-logo-contenedor">
+                        <img src={theme.avatarImage} alt="Logo" className="object-cover w-full h-full pointer-events-none" />
                     </div>
                 ) : (
                     <div 
-                        className="MV-avatar-evento w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shadow-sm shrink-0 uppercase border-2 border-white/20"
+                        className="flex items-center justify-center flex-shrink-0 w-16 h-16 text-xl font-bold uppercase border-2 rounded-full shadow-sm MV-avatar-default border-white/20"
                         style={{ 
                             backgroundColor: theme.avatarBackgroundColor || '#374151', 
                             color: theme.avatarTextColor || '#ffffff' 
@@ -748,16 +748,16 @@ export default function App() {
                     </div>
                 )}
                 
-                <div>
+                <div className="MV-detalles-evento">
                 <h1 
                     onClick={handleTitleClick}
-                    className="MV-titulo-evento text-2xl md:text-3xl font-bold cursor-default select-none active:opacity-80 transition-opacity" 
+                    className="text-2xl font-bold transition-opacity cursor-default select-none md:text-3xl active:opacity-80" 
                     style={{ color: theme.headerTitleColor || theme.textColor }}
                     title=" "
                 >
                     {activeEvent.title}
                 </h1>
-                <div className="flex flex-wrap items-center gap-2 text-sm mt-1">
+                <div className="flex flex-wrap items-center gap-2 mt-1 text-sm MV-meta-info">
                     <div className="flex items-center gap-2" style={{ color: theme.headerDateColor || theme.textColor }}>
                         <User size={14} />
                         <span>{activeEvent.subtitle}</span>
@@ -768,7 +768,7 @@ export default function App() {
                         <span>{activeEvent.date}</span>
                     </div>
                 </div>
-                <div className="flex items-center gap-6 mt-3 text-xs font-bold uppercase tracking-wide" style={{ color: theme.statsTextColor || theme.textColor }}>
+                <div className="flex items-center gap-6 mt-3 text-xs font-bold tracking-wide uppercase MV-estadisticas" style={{ color: theme.statsTextColor || theme.textColor }}>
                     <div className="flex flex-col items-center">
                         <span className="text-lg leading-none">{guestPhotos.length}</span>
                         <span>Fotos</span>
@@ -784,12 +784,12 @@ export default function App() {
                 </div>
                 </div>
             </div>
-            <div className="flex gap-3 w-full md:w-auto mt-2 md:mt-0">
+            <nav className="flex w-full gap-3 mt-2 md:w-auto md:mt-0 MV-botones-accion">
                 {activeEvent.allowUploads && (
                 <button 
                     onClick={() => setIsUploadModalOpen(true)} 
                     style={{ backgroundColor: theme.primaryColor, color: theme.primaryTextColor }} 
-                    className="MV-btn-accion flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-full font-medium shadow-md transition-all hover:opacity-90"
+                    className="flex items-center justify-center flex-1 gap-2 px-6 py-2.5 font-medium transition-all rounded-full shadow-md md:flex-none hover:opacity-90"
                 >
                     <Camera size={18} /> Subir
                 </button>
@@ -797,26 +797,26 @@ export default function App() {
                 <button 
                     onClick={() => setIsDownloadModalOpen(true)} 
                     style={{ backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor }} 
-                    className="MV-btn-accion flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-full font-medium shadow-md transition-all hover:opacity-90"
+                    className="flex items-center justify-center flex-1 gap-2 px-6 py-2.5 font-medium transition-all rounded-full shadow-md md:flex-none hover:opacity-90"
                 >
                 <Download size={18} /> Descargar
                 </button>
-            </div>
+            </nav>
             </div>
         </header>
-      </div>
+      </section>
 
       {guestPhotos.length > 0 && (
-        <div className="max-w-6xl mx-auto mb-6 px-4 md:px-8">
+        <div className="max-w-6xl px-4 mx-auto mb-6 md:px-8 MV-barra-herramientas">
             <div 
-                className="MV-toolbar-galeria rounded-xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 border border-gray-100"
+                className="flex flex-col items-center justify-between gap-4 p-4 border border-gray-100 shadow-sm rounded-xl sm:flex-row"
                 style={{ 
                     backgroundColor: theme.galleryToolbarBg || '#ffffff',
                     color: theme.galleryToolbarText || '#374151'
                 }}
             >
-            <div className="flex items-center gap-4 w-full sm:w-auto">
-                <span className="font-bold flex items-center gap-2"><LayoutGrid size={20} /> Vista de Galería</span>
+            <div className="flex items-center w-full gap-4 sm:w-auto">
+                <span className="flex items-center gap-2 font-bold"><LayoutGrid size={20} /> Vista de Galería</span>
                 <div className={`hidden md:flex gap-2 ml-auto sm:ml-4 ${isDownloadSelectionMode ? 'opacity-50 pointer-events-none' : ''}`}>
                     <button onClick={() => setColumns(1)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 1 ? 'shadow-sm' : 'bg-transparent border-current opacity-70'}`} style={columns === 1 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor, borderColor: theme.secondaryColor } : {}}><LayoutList size={16} /></button>
                     <button onClick={() => setColumns(2)} className={`px-4 py-1.5 rounded-md border text-sm font-medium ${columns === 2 ? 'shadow-sm' : 'bg-transparent border-current opacity-70'}`} style={columns === 2 ? { backgroundColor: theme.secondaryColor, color: theme.secondaryTextColor, borderColor: theme.secondaryColor } : {}}><LayoutGrid size={16} /></button>
@@ -826,18 +826,18 @@ export default function App() {
         </div>
       )}
 
-      <main className="max-w-6xl mx-auto px-4 md:px-8">
+      <section className="max-w-6xl px-4 mx-auto md:px-8 MV-contenido-principal">
         {guestPhotos.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 text-center border-2 border-dashed rounded-xl" style={{ borderColor: hexToRgba(theme.textColor, 0.2) }}>
-                <div className="w-24 h-24 rounded-full flex items-center justify-center mb-6" style={{ backgroundColor: hexToRgba(theme.primaryColor, 0.1) }}>
+                <div className="flex items-center justify-center w-24 h-24 mb-6 rounded-full" style={{ backgroundColor: hexToRgba(theme.primaryColor, 0.1) }}>
                     <ImageIcon size={48} style={{ color: theme.primaryColor }} />
                 </div>
-                <h3 className="text-2xl font-bold mb-3" style={{ color: theme.textColor }}>Aún no hay recuerdos aquí</h3>
-                <p className="text-lg opacity-70 max-w-md mb-8" style={{ color: theme.textColor }}>Sé el primero en compartir un momento especial.</p>
+                <h3 className="mb-3 text-2xl font-bold" style={{ color: theme.textColor }}>Aún no hay recuerdos aquí</h3>
+                <p className="max-w-md mb-8 text-lg opacity-70" style={{ color: theme.textColor }}>Sé el primero en compartir un momento especial.</p>
                 {activeEvent.allowUploads && (
                     <button 
                         onClick={() => setIsUploadModalOpen(true)} 
-                        className="MV-btn-flotante flex items-center gap-2 px-8 py-4 rounded-full font-bold shadow-lg hover:scale-105 transition-all" 
+                        className="flex items-center gap-2 px-8 py-4 font-bold transition-all rounded-full shadow-lg hover:scale-105" 
                         style={{ backgroundColor: theme.primaryColor, color: theme.primaryTextColor }}
                     >
                         <Plus size={20} /> Subir
@@ -846,20 +846,21 @@ export default function App() {
             </div>
         ) : (
             <>
+                {/* CAMBIO DE ESTRUCTURA: SECTION > ARTICLE PARA EL GRID */}
                 <div className={`MV-muro-recuerdos grid gap-6 ${columns === 1 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
                 {visiblePhotos.map((photo, index) => (
-                    <div 
+                    <article 
                         key={photo.id} 
-                        className={`MV-tarjeta-recuerdo rounded-xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden border ${isDownloadSelectionMode && downloadSelection.has(photo.id) ? 'MV-tarjeta-seleccionada border-4 border-blue-500 ring-4 ring-blue-100 scale-[0.98]' : 'border-gray-100'}`}
+                        className={`MV-card-foto flex flex-col overflow-hidden transition-all duration-300 border bg-white rounded-xl shadow-sm hover:shadow-md ${isDownloadSelectionMode && downloadSelection.has(photo.id) ? 'MV-selected border-4 border-blue-500 ring-4 ring-blue-100 scale-[0.98]' : 'border-gray-100'}`}
                         style={{ 
                             backgroundColor: theme.cardBackgroundColor || '#ffffff' 
                         }}
                     >
-                    <div className="MV-tarjeta-header p-4 flex items-start justify-between">
+                    <header className="flex items-start justify-between p-4 MV-encabezado-card">
                         <div className="flex items-center gap-3">
-                        <div className="MV-avatar-usuario w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: photo.author.avatarColor, color: '#fff' }}>{photo.author.initials}</div>
+                        <div className="flex items-center justify-center w-10 h-10 text-sm font-bold text-white rounded-full MV-avatar-circulo" style={{ backgroundColor: photo.author.avatarColor }}>{photo.author.initials}</div>
                         <div>
-                            <h3 className="font-bold text-base" style={{ color: theme.cardTextColor || '#1f2937' }}>{photo.author.name}</h3>
+                            <h3 className="text-base font-bold" style={{ color: theme.cardTextColor || '#1f2937' }}>{photo.author.name}</h3>
                             <p className="text-xs font-medium opacity-90" style={{ color: theme.cardTextColor || '#6b7280' }}>
                             {!isNaN(new Date(photo.createdAt).getTime()) 
                                     ? new Date(photo.createdAt).toLocaleString() 
@@ -867,11 +868,11 @@ export default function App() {
                             </p>
                         </div>
                         </div>
-                        <button onClick={() => handleReport(photo.id)} className="hover:text-red-500 opacity-50 hover:opacity-100" style={{ color: theme.cardTextColor }}><Flag size={18} /></button>
-                    </div>
+                        <button onClick={() => handleReport(photo.id)} className="opacity-50 hover:text-red-500 hover:opacity-100" style={{ color: theme.cardTextColor }}><Flag size={18} /></button>
+                    </header>
                     
-                    <div 
-                        className="MV-tarjeta-media cursor-pointer bg-gray-100 relative aspect-[4/3] overflow-hidden group" 
+                    <figure 
+                        className="MV-card-media relative bg-gray-100 aspect-[4/3] overflow-hidden group cursor-pointer" 
                         onClick={() => {
                             if (isDownloadSelectionMode) {
                                 toggleDownloadSelection(photo.id);
@@ -889,17 +890,17 @@ export default function App() {
                         )}
 
                         {photo.type === 'video' ? (
-                            <div className="w-full h-full relative">
-                                <video src={photo.thumbnail} className="w-full h-full object-cover opacity-90 pointer-events-none" muted />
+                            <div className="relative w-full h-full">
+                                <video src={photo.thumbnail} className="object-cover w-full h-full pointer-events-none opacity-90" muted />
                                 <div className="absolute inset-0 flex items-center justify-center bg-black/20"><Video size={32} className="text-white" /></div>
                             </div>
                         ) : (
-                            <img src={photo.thumbnail} alt={photo.title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" loading="lazy" />
+                            <img src={photo.thumbnail} alt={photo.title} className="object-cover w-full h-full transition-transform duration-700 hover:scale-105" loading="lazy" />
                         )}
-                        <div className="absolute top-3 right-3 bg-black/50 backdrop-blur-sm text-white text-[10px] px-2 py-1 rounded uppercase font-bold">{photo.category}</div>
-                    </div>
+                        <figcaption className="absolute px-2 py-1 text-[10px] font-bold text-white uppercase rounded top-3 right-3 bg-black/50 backdrop-blur-sm">{photo.category}</figcaption>
+                    </figure>
                     
-                    <div className="MV-tarjeta-footer p-4 border-t flex items-center justify-between" style={{ borderColor: hexToRgba(theme.cardTextColor || '#000000', 0.1) }}>
+                    <footer className="flex items-center justify-between p-4 border-t MV-card-footer" style={{ borderColor: hexToRgba(theme.cardTextColor || '#000000', 0.1) }}>
                         <button 
                             onClick={() => handleLike(photo.id)} 
                             className={`flex items-center gap-2 text-sm font-medium`} 
@@ -908,8 +909,8 @@ export default function App() {
                             <Heart size={20} className={photo.likedByMe ? "fill-current" : ""} />
                             <span>{photo.likes}</span>
                         </button>
-                    </div>
-                    </div>
+                    </footer>
+                    </article>
                 ))}
                 </div>
 
@@ -917,7 +918,7 @@ export default function App() {
                     <div className="flex justify-center mt-10 mb-6">
                         <button 
                             onClick={handleLoadMore}
-                            className="flex items-center gap-2 px-8 py-3 rounded-full bg-white shadow-md border border-gray-200 text-gray-600 font-bold hover:bg-gray-50 hover:text-gray-900 transition-all transform hover:scale-105"
+                            className="flex items-center gap-2 px-8 py-3 font-bold text-gray-600 transition-all transform bg-white border border-gray-200 rounded-full shadow-md hover:bg-gray-50 hover:text-gray-900 hover:scale-105"
                         >
                             <ChevronDown size={20} />
                             Cargar más recuerdos ({guestPhotos.length - visiblePhotosCount} restantes)
@@ -926,7 +927,7 @@ export default function App() {
                 )}
             </>
         )}
-      </main>
+      </section>
 
       <Lightbox 
         photo={selectedPhotoIndex !== null ? visiblePhotos[selectedPhotoIndex] : null}
@@ -956,6 +957,6 @@ export default function App() {
         event={activeEvent} 
         onSelectManual={handleEnableSelectionMode}
       />
-    </div>
+    </main>
   );
 }

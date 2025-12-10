@@ -106,13 +106,13 @@ export const Lightbox: React.FC<LightboxProps> = ({
   };
 
   return (
-    // RESTAURACIÓN DE CLASES + TAGS MV
-    <div className="MV-visor-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-fade-in overflow-y-auto select-none">
+    // ESTRUCTURA REFACTORIZADA CON SEMÁNTICA HTML5 + CLASES MV
+    <section className="MV-visor-overlay fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto select-none bg-black/95 backdrop-blur-md animate-fade-in">
       
       {/* Close Button (Outside) */}
       <button 
         onClick={onClose} 
-        className="fixed top-4 right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-2 transition-colors z-[60]"
+        className="fixed p-2 text-white transition-colors rounded-full top-4 right-4 bg-white/10 hover:bg-white/20 z-[60] MV-btn-cerrar"
       >
         <X size={24} />
       </button>
@@ -121,7 +121,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
       {hasPrev && (
         <button 
           onClick={(e) => { e.stopPropagation(); onPrev(); }}
-          className="fixed left-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full transition-all z-40 hidden md:flex"
+          className="fixed left-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full transition-all z-40 hidden md:flex MV-nav-btn prev"
         >
           <ChevronLeft size={24} />
         </button>
@@ -130,27 +130,27 @@ export const Lightbox: React.FC<LightboxProps> = ({
       {hasNext && (
         <button 
           onClick={(e) => { e.stopPropagation(); onNext(); }}
-          className="fixed right-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full transition-all z-40 hidden md:flex"
+          className="fixed right-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full transition-all z-40 hidden md:flex MV-nav-btn next"
         >
           <ChevronRight size={24} />
         </button>
       )}
 
       {/* Main Content Card */}
-      <div className="MV-visor-card bg-white w-full max-w-[800px] rounded-lg shadow-2xl flex flex-col overflow-hidden max-h-[95vh] relative">
+      <article className="MV-visor-card w-full max-w-[800px] bg-white rounded-lg shadow-2xl flex flex-col overflow-hidden max-h-[95vh] relative">
         
         {/* Report Confirmation Overlay */}
         {showReportConfirm && (
-          <div className="absolute inset-0 z-[70] flex items-center justify-center bg-white/90 backdrop-blur-sm p-6 animate-fade-in">
-            <div className="max-w-sm w-full text-center">
-              <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+          <div className="absolute inset-0 z-[70] flex items-center justify-center bg-white/90 backdrop-blur-sm p-6 animate-fade-in MV-confirmacion-overlay">
+            <div className="w-full max-w-sm text-center">
+              <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 text-red-500 bg-red-100 rounded-full animate-bounce">
                 <Flag size={32} className="fill-current" />
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">¿Reportar esta foto?</h3>
-              <p className="text-gray-500 text-sm mb-6">
+              <h3 className="mb-2 text-xl font-bold text-gray-800">¿Reportar esta foto?</h3>
+              <p className="mb-6 text-sm text-gray-500">
                 Si consideras que esta imagen es inapropiada u ofensiva, confirma para enviarla a revisión.
               </p>
-              <div className="flex gap-3 justify-center">
+              <div className="flex justify-center gap-3">
                 <button
                   onClick={() => setShowReportConfirm(false)}
                   className="px-6 py-2.5 rounded-lg bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
@@ -172,8 +172,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
         )}
 
         {/* Image Area */}
-        <div 
-            className="MV-visor-media-container flex-1 relative bg-black/5 flex items-center justify-center overflow-hidden min-h-[300px] group"
+        <figure 
+            className="MV-visor-media-container flex-1 relative bg-black/5 flex items-center justify-center overflow-hidden min-h-[300px] group m-0"
         >
            {photo.type === 'video' ? (
               <video 
@@ -189,23 +189,23 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 className="max-h-[60vh] w-auto object-contain shadow-sm"
               />
            )}
-        </div>
+        </figure>
 
         {/* Footer / Info Area */}
-        <div className="MV-visor-info-panel bg-white px-6 py-5 flex flex-col gap-5 shrink-0 border-t border-gray-100 overflow-y-auto">
+        <footer className="flex flex-col flex-shrink-0 gap-5 px-6 py-5 overflow-y-auto bg-white border-t border-gray-100 MV-visor-info-panel">
           
           <div className="flex flex-col items-center gap-5">
              {/* Metadata Section (Author & Date) */}
-            <div className="flex flex-col items-center gap-2">
+            <div className="flex flex-col items-center gap-2 MV-autor-info">
                 {/* User Icon */}
-                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 mb-1">
+                <div className="flex items-center justify-center w-12 h-12 mb-1 text-gray-500 bg-gray-100 rounded-full">
                     <User size={24} />
                 </div>
                 
                 {/* Name and Date */}
                 <div className="text-center">
-                    <p className="font-bold text-gray-800 text-2xl leading-tight">{photo.author.name}</p>
-                    <div className="flex items-center justify-center gap-2 text-sm font-medium text-gray-500 mt-2">
+                    <p className="text-2xl font-bold leading-tight text-gray-800">{photo.author.name}</p>
+                    <div className="flex items-center justify-center gap-2 mt-2 text-sm font-medium text-gray-500">
                         <Clock size={14} />
                         <span>{getFormattedDate(photo.createdAt)}</span>
                     </div>
@@ -213,7 +213,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-wrap justify-center gap-3 w-full">
+            <div className="flex flex-wrap justify-center w-full gap-3 MV-acciones">
               {/* Like Button */}
               <button 
                 onClick={() => onLike(photo.id)}
@@ -232,7 +232,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   <button 
                     onClick={handleDownload}
                     disabled={isDownloading}
-                    className="flex items-center justify-center gap-2 px-6 py-2 rounded-md border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 font-medium transition-colors text-sm disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 px-6 py-2 text-sm font-medium text-gray-600 transition-colors bg-white border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50"
                   >
                     <Download size={16} />
                     {isDownloading ? 'Bajando...' : 'Descargar'}
@@ -242,7 +242,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
               {/* Report Button */}
               <button 
                 onClick={() => setShowReportConfirm(true)}
-                className="flex items-center justify-center gap-2 px-6 py-2 rounded-md border border-yellow-400 text-yellow-600 bg-white hover:bg-yellow-50 font-medium transition-colors text-sm"
+                className="flex items-center justify-center gap-2 px-6 py-2 text-sm font-medium text-yellow-600 transition-colors bg-white border border-yellow-400 rounded-md hover:bg-yellow-50"
               >
                 <Flag size={16} />
                 Reportar
@@ -252,8 +252,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
 
           {/* Related Photos (Author Carousel) */}
           {relatedPhotos.length > 0 && (
-            <div className="w-full pt-4 border-t border-gray-100 mt-2">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 text-center">
+            <div className="w-full pt-4 mt-2 border-t border-gray-100 MV-relacionados">
+              <p className="mb-3 text-xs font-bold text-center text-gray-400 uppercase tracking-wider">
                 Últimas fotos de {photo.author.name}
               </p>
               <div className="flex justify-center gap-3">
@@ -264,23 +264,23 @@ export const Lightbox: React.FC<LightboxProps> = ({
                         const index = allPhotos.findIndex(item => item.id === p.id);
                         if (index !== -1 && onSelect) onSelect(index);
                     }}
-                    className="w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden border border-gray-200 hover:border-album-accent hover:shadow-md cursor-pointer transition-all group relative focus:outline-none focus:ring-2 focus:ring-album-accent"
+                    className="relative flex-shrink-0 w-20 h-20 overflow-hidden transition-all border border-gray-200 rounded-lg cursor-pointer hover:border-album-accent hover:shadow-md group focus:outline-none focus:ring-2 focus:ring-album-accent"
                     title={p.title}
                   >
                     {p.type === 'video' ? (
-                         <video src={p.thumbnail} className="w-full h-full object-cover opacity-90" muted />
+                         <video src={p.thumbnail} className="object-cover w-full h-full opacity-90" muted />
                     ) : (
-                        <img src={p.thumbnail} alt={p.title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                        <img src={p.thumbnail} alt={p.title} className="object-cover w-full h-full transition-transform duration-300 group-hover:scale-110" />
                     )}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                    <div className="absolute inset-0 transition-colors bg-black/0 group-hover:bg-black/10" />
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-        </div>
-      </div>
-    </div>
+        </footer>
+      </article>
+    </section>
   );
 };
