@@ -139,6 +139,7 @@ const ColorPicker = ({ label, value, onChange, fallback }: { label: string, valu
                       maxLength={6}
                       className="w-full pl-7 pr-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4f46e5] focus:border-[#4f46e5] outline-none font-mono text-gray-700 font-bold tracking-wide transition-all shadow-sm"
                       placeholder="HEX"
+                      style={{ colorScheme: 'light' }}
                   />
               </div>
           </div>
@@ -931,6 +932,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 onChange={(e) => setNewCategoryName(e.target.value)}
                                 className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none"
                                 placeholder="Ej: Boda, Fiesta..."
+                                style={{ colorScheme: 'light' }}
                             />
                         </div>
                         <div>
@@ -973,12 +975,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                            <div className="space-y-4">
                                <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Título</label>
-                                    <input type="text" value={localConfig.title} onChange={(e) => setLocalConfig({...localConfig, title: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                    <input type="text" value={localConfig.title} onChange={(e) => setLocalConfig({...localConfig, title: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" style={{ colorScheme: 'light' }} />
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-1">Fecha</label>
-                                        <input type="text" value={localConfig.date} onChange={(e) => setLocalConfig({...localConfig, date: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                        <input type="text" value={localConfig.date} onChange={(e) => setLocalConfig({...localConfig, date: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" style={{ colorScheme: 'light' }} />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-1">Token URL</label>
@@ -989,6 +991,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 onChange={(e) => setLocalConfig({...localConfig, publicToken: e.target.value})} 
                                                 className={`w-full pl-10 pr-10 py-2 rounded-lg border outline-none ${isTokenLocked ? 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed' : 'bg-white border-gray-300 focus:ring-2 focus:ring-[#4f46e5]'}`}
                                                 disabled={isTokenLocked}
+                                                style={{ colorScheme: 'light' }}
                                             />
                                             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                                                 {isTokenLocked ? <Lock size={16} /> : <ExternalLink size={16} />}
@@ -1005,7 +1008,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Subtítulo</label>
-                                    <input type="text" value={localConfig.subtitle} onChange={(e) => setLocalConfig({...localConfig, subtitle: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                    <input type="text" value={localConfig.subtitle} onChange={(e) => setLocalConfig({...localConfig, subtitle: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" style={{ colorScheme: 'light' }} />
                                 </div>
                            </div>
                       </div>
@@ -1016,7 +1019,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                <div>
                                    <label className="block text-sm font-bold text-gray-700 mb-1">Contraseña Descarga</label>
                                    <div className="relative">
-                                       <input type="text" value={localConfig.downloadPassword} onChange={(e) => setLocalConfig({...localConfig, downloadPassword: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                       <input type="text" value={localConfig.downloadPassword} onChange={(e) => setLocalConfig({...localConfig, downloadPassword: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" style={{ colorScheme: 'light' }} />
                                        <button onClick={() => setLocalConfig({...localConfig, downloadPassword: Math.random().toString(36).slice(-6)})} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-gray-100 px-2 py-1 rounded font-bold">Generar</button>
                                    </div>
                                </div>
@@ -1093,6 +1096,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     value={localConfig.totalEventSizeLimitGB || 5} 
                                     onChange={(e) => setLocalConfig({...localConfig, totalEventSizeLimitGB: Number(e.target.value)})} 
                                     className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none mb-3"
+                                    style={{ colorScheme: 'light' }}
                                 />
                                 <div className="mt-2">
                                     <div className="flex justify-between text-xs mb-1 font-medium text-gray-600">
@@ -1124,21 +1128,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                            <div className="grid grid-cols-2 gap-4">
                                <div>
                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Max MB Foto</label>
-                                   <input type="number" value={localConfig.storageLimit} onChange={(e) => setLocalConfig({...localConfig, storageLimit: Number(e.target.value)})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                   <input type="number" value={localConfig.storageLimit} onChange={(e) => setLocalConfig({...localConfig, storageLimit: Number(e.target.value)})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" style={{ colorScheme: 'light' }} />
                                </div>
                                <div>
                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Max MB Video</label>
-                                   <input type="number" value={localConfig.maxVideoSizeMB || 50} onChange={(e) => setLocalConfig({...localConfig, maxVideoSizeMB: Number(e.target.value)})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                   <input type="number" value={localConfig.maxVideoSizeMB || 50} onChange={(e) => setLocalConfig({...localConfig, maxVideoSizeMB: Number(e.target.value)})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" style={{ colorScheme: 'light' }} />
                                </div>
                            </div>
                            <div className="grid grid-cols-2 gap-4">
                                <div>
                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Max Fotos/Pers</label>
-                                   <input type="number" value={localConfig.maxPhotosPerPerson} onChange={(e) => setLocalConfig({...localConfig, maxPhotosPerPerson: Number(e.target.value)})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                   <input type="number" value={localConfig.maxPhotosPerPerson} onChange={(e) => setLocalConfig({...localConfig, maxPhotosPerPerson: Number(e.target.value)})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" style={{ colorScheme: 'light' }} />
                                </div>
                                <div>
                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Max Videos/Pers</label>
-                                   <input type="number" value={localConfig.maxVideosPerPerson} onChange={(e) => setLocalConfig({...localConfig, maxVideosPerPerson: Number(e.target.value)})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                                   <input type="number" value={localConfig.maxVideosPerPerson} onChange={(e) => setLocalConfig({...localConfig, maxVideosPerPerson: Number(e.target.value)})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" style={{ colorScheme: 'light' }} />
                                </div>
                            </div>
                        </div>
@@ -1238,6 +1242,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     onChange={(e) => setBaseUrl(e.target.value)} 
                                     className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-[#4f46e5] outline-none mb-2"
                                     placeholder="https://tudominio.com"
+                                    style={{ colorScheme: 'light' }}
                                />
                                <p className="text-[10px] text-gray-500">
                                    Edita esto si estás en localhost y quieres generar un QR para producción. Se guardará automáticamente.
@@ -1277,6 +1282,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     onChange={(e) => setLocalConfig({...localConfig, participantsCount: Number(e.target.value)})}
                                     className="w-full pl-4 pr-12 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none font-bold"
                                     min="0"
+                                    style={{ colorScheme: 'light' }}
                                 />
                                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">PERS</span>
                              </div>
@@ -1299,6 +1305,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     value={newParticipantName}
                                     onChange={(e) => setNewParticipantName(e.target.value)}
                                     className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none"
+                                    style={{ colorScheme: 'light' }}
                                 />
                             </div>
                             <button onClick={addParticipant} disabled={!newParticipantName.trim()} className="w-full py-3 bg-[#4f46e5] text-white rounded-lg font-bold shadow-md hover:bg-[#4338ca] transition-colors disabled:opacity-50">Añadir</button>
@@ -1309,7 +1316,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                              <h3 className="font-bold text-gray-700">Participantes ({safeParticipants.length})</h3>
-                             <input type="text" placeholder="Buscar..." value={participantSearch} onChange={(e) => setParticipantSearch(e.target.value)} className="pl-3 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-[#4f46e5] outline-none" />
+                             <input 
+                                type="text" 
+                                placeholder="Buscar..." 
+                                value={participantSearch} 
+                                onChange={(e) => setParticipantSearch(e.target.value)} 
+                                className="pl-3 pr-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-[#4f46e5] outline-none" 
+                                style={{ colorScheme: 'light' }}
+                             />
                         </div>
                         <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto custom-scrollbar">
                             {safeParticipants.length > 0 ? (
