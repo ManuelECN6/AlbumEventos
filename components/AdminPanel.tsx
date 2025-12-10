@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
-import { Save, Plus, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Smartphone, Monitor, CloudLightning, Ticket, Video, Image as ImageIcon, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Save, Plus, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Smartphone, Monitor, CloudLightning, Ticket, Video, Image as ImageIcon, RefreshCw, AlertTriangle, Menu } from 'lucide-react';
 import { uploadFileToFirebase, recalculateEventStorageUsage } from '../services/firebaseService';
 import { GoogleDriveImporter } from './GoogleDriveImporter';
 import QRCode from "react-qr-code";
@@ -42,9 +42,9 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     allowDownloads: false, 
     allowedMediaTypes: ['photo', 'video'],
     storageLimit: 100, // Max MB por Foto
-    maxPhotosPerPerson: 50, // Aumentado para Blaze
-    maxVideosPerPerson: 10, // Aumentado para Blaze
-    maxVideoSizeMB: 512, // Aumentado a 512MB por defecto para calidad HD
+    maxPhotosPerPerson: 50, 
+    maxVideosPerPerson: 10, 
+    maxVideoSizeMB: 512, 
     totalEventSizeLimitGB: 5,
     totalUsageBytes: 0,
     clientName: 'Cliente Nuevo',
@@ -92,7 +92,6 @@ const hexToRgba = (hex: string, alpha: number) => {
 
 // --- COMPONENTE COLOR PICKER ---
 const ColorPicker = ({ label, value, onChange, fallback }: { label: string, value?: string, onChange: (val: string) => void, fallback: string }) => {
-    // ... same as before
     const [internalColor, setInternalColor] = useState(value || fallback);
 
     useEffect(() => {
@@ -147,9 +146,8 @@ const ColorPicker = ({ label, value, onChange, fallback }: { label: string, valu
     );
 };
 
-// --- LIVE PREVIEW REALISTA (1:1 Con App.tsx) ---
+// --- LIVE PREVIEW REALISTA ---
 const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePhotos: Photo[] }) => {
-    // ... same as before
     const theme = config.theme || DEFAULT_EVENT_TEMPLATE.theme!;
     const fontClass = theme.fontFamily === 'serif' ? 'font-serif' : 'font-sans';
     
@@ -317,7 +315,6 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
 export const AdminPanel: React.FC<AdminPanelProps> = ({ 
   events, 
   currentEventId, 
-  // ... rest of props
   currentEventPhotos = [],
   isProcessing = false,
   onUpdateEvent,
@@ -349,7 +346,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   }));
 
   const [activeTab, setActiveTab] = useState<'general' | 'categories' | 'gallery' | 'clients' | 'participants' | 'appearance'>('general');
-  // ... rest of state
   const [searchTerm, setSearchTerm] = useState('');
   const [galleryView, setGalleryView] = useState<'active' | 'archived' | 'trash'>('active');
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
@@ -366,6 +362,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#3b82f6');
   const [isRecalculating, setIsRecalculating] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   
   const [baseUrl, setBaseUrl] = useState(() => {
       if (typeof window !== 'undefined') {
@@ -406,7 +403,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
   }, [activeEvent]);
 
-  // ... (handleSave, handleExitToSite, etc. - MANTENER IGUAL)
   const handleSave = () => {
     onUpdateEvent(localConfig);
     const btn = document.getElementById('save-btn');
@@ -478,7 +474,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleBannerChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    // ... code same as before
     if (e.target.files && e.target.files[0]) {
       if (!activeEvent.id) return;
       setIsUploadingBanner(true);
@@ -500,7 +495,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-     // ... code same as before
     if (e.target.files && e.target.files[0]) {
       if (!activeEvent.id) return;
       setIsUploadingAvatar(true);
@@ -582,7 +576,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       try {
           const newTotal = await recalculateEventStorageUsage(activeEvent.id, currentEventPhotos || []);
           setLocalConfig(prev => ({ ...prev, totalUsageBytes: newTotal }));
-          // No necesitamos llamar onUpdateField porque recalculateEventStorageUsage ya actualiza Firestore
       } catch (error) {
           console.error("Error recalculando espacio:", error);
           alert("Hubo un error al calcular el espacio. Revisa la consola.");
@@ -659,19 +652,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans text-gray-800">
       
-      {/* SIDEBAR ... */}
-      <aside className="w-72 bg-gray-900 text-gray-300 flex flex-col shadow-2xl z-30 shrink-0">
-        <div className="p-6 border-b border-gray-800">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Settings className="text-[#4f46e5]" />
-            Admin Panel
-          </h2>
-          <p className="text-[10px] text-gray-500 mt-1 tracking-wider uppercase">Gestor de Eventos</p>
+      {/* MOBILE SIDEBAR OVERLAY */}
+      {isMobileSidebarOpen && (
+        <div 
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+            onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* SIDEBAR RESPONSIVE */}
+      <aside 
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-gray-900 text-gray-300 flex flex-col shadow-2xl transition-transform duration-300 lg:static lg:translate-x-0 shrink-0 ${
+            isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="p-6 border-b border-gray-800 flex items-center justify-between">
+            <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Settings className="text-[#4f46e5]" />
+                    Admin Panel
+                </h2>
+                <p className="text-[10px] text-gray-500 mt-1 tracking-wider uppercase">Gestor de Eventos</p>
+            </div>
+            {/* CLOSE BUTTON MOBILE */}
+            <button 
+                onClick={() => setIsMobileSidebarOpen(false)}
+                className="lg:hidden p-1 text-gray-400 hover:text-white rounded-md hover:bg-gray-800 transition-colors"
+            >
+                <XIcon size={20} />
+            </button>
         </div>
 
         <div className="p-4 border-b border-gray-800">
             <button 
-                onClick={onCreateEvent}
+                onClick={() => { onCreateEvent(); setIsMobileSidebarOpen(false); }}
                 className="w-full bg-[#4f46e5] hover:bg-[#4338ca] text-white p-3 rounded-lg flex items-center justify-center gap-2 mb-4 transition-all shadow-lg shadow-indigo-900/20 font-bold text-sm"
             >
                 <Plus size={16} /> Crear Nuevo Álbum
@@ -694,7 +708,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     {events?.filter(e => e.title.toLowerCase().includes(searchTerm.toLowerCase())).map(event => (
                     <li key={event.id}>
                         <button
-                        onClick={() => onSelectEvent(event.id)}
+                        onClick={() => { onSelectEvent(event.id); setIsMobileSidebarOpen(false); }}
                         className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all ${currentEventId === event.id ? 'bg-gray-800 text-white border-l-4 border-[#4f46e5]' : 'hover:bg-gray-800/50 hover:text-white'}`}
                         >
                          <Folder size={16} className={currentEventId === event.id ? 'text-[#4f46e5]' : 'text-gray-500'} />
@@ -724,7 +738,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         ].map((item) => (
                             <li key={item.id}>
                                 <button
-                                    onClick={() => setActiveTab(item.id as any)}
+                                    onClick={() => { setActiveTab(item.id as any); setIsMobileSidebarOpen(false); }}
                                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm ${activeTab === item.id ? 'bg-[#4f46e5] text-white font-bold' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
                                 >
                                     <item.icon size={18} />
@@ -746,51 +760,58 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* MAIN CONTENT */}
       <main className="flex-1 overflow-y-auto relative bg-gray-50 flex flex-col">
-        {/* Header... */}
-        <header className="sticky top-0 z-20 bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shadow-sm">
-            <div>
-                <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                    {activeTab === 'general' && 'Configuración General'}
-                    {activeTab === 'appearance' && 'Personalización y Marca'}
-                    {activeTab === 'categories' && 'Categorías del Evento'}
-                    {activeTab === 'gallery' && 'Gestión de Contenido'}
-                    {activeTab === 'clients' && 'Acceso y Distribución'}
-                    {activeTab === 'participants' && 'Lista de Invitados'}
-                </h1>
-                <p className="text-gray-500 text-sm">Editando: {localConfig.title}</p>
+        {/* Header RESPONSIVE */}
+        <header className="sticky top-0 z-20 bg-white border-b border-gray-200 px-4 md:px-8 py-4 flex flex-col md:flex-row items-start md:items-center justify-between shadow-sm gap-4">
+            <div className="flex items-center gap-3 w-full md:w-auto">
+                {/* HAMBURGER BUTTON MOBILE */}
+                <button 
+                    onClick={() => setIsMobileSidebarOpen(true)}
+                    className="lg:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                    <Menu size={24} />
+                </button>
+                <div>
+                    <h1 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2 flex-wrap">
+                        {activeTab === 'general' && 'Configuración General'}
+                        {activeTab === 'appearance' && 'Personalización'}
+                        {activeTab === 'categories' && 'Categorías'}
+                        {activeTab === 'gallery' && 'Contenido'}
+                        {activeTab === 'clients' && 'Acceso & QR'}
+                        {activeTab === 'participants' && 'Invitados'}
+                    </h1>
+                    <p className="text-gray-500 text-xs md:text-sm truncate max-w-[200px] md:max-w-none">Editando: {localConfig.title}</p>
+                </div>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-2 self-end md:self-auto w-full md:w-auto justify-end">
                 {activeTab === 'general' && (
                    <button 
                         onClick={() => setShowDeleteEventConfirm(true)}
-                        className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg font-bold transition-colors flex items-center gap-2 text-sm"
+                        className="px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg font-bold transition-colors flex items-center gap-2 text-xs md:text-sm"
                     >
-                        <Trash2 size={16} /> Eliminar
+                        <Trash2 size={16} /> <span className="hidden md:inline">Eliminar</span>
                    </button>
                 )}
                 <button 
                     id="save-btn"
                     onClick={handleSave} 
-                    className="bg-[#4f46e5] hover:bg-[#4338ca] text-white px-6 py-2.5 rounded-lg shadow-lg shadow-indigo-200 font-bold flex items-center gap-2 transition-all transform active:scale-95"
+                    className="bg-[#4f46e5] hover:bg-[#4338ca] text-white px-4 py-2 md:px-6 md:py-2.5 rounded-lg shadow-lg shadow-indigo-200 font-bold flex items-center gap-2 transition-all transform active:scale-95 text-xs md:text-sm"
                 >
-                    <Save size={18} /> Guardar Cambios
+                    <Save size={16} /> Guardar
                 </button>
             </div>
         </header>
 
-        <div className="p-8 max-w-7xl mx-auto w-full">
+        <div className="p-4 md:p-8 max-w-7xl mx-auto w-full">
           
-          {/* ... [ APPEARANCE TAB - NO CHANGES ] ... */}
+          {/* ... [ APPEARANCE TAB ] ... */}
           {activeTab === 'appearance' && (
              <div className="flex flex-col lg:flex-row gap-8 items-start">
-                 {/* ... content same as before ... */}
                  <div className="flex-1 space-y-6 w-full max-w-4xl">
                      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                             <Image className="text-[#4f46e5]" /> Portada
                         </h3>
-                        {/* DESKTOP PREVIEW BOX IN EDITOR */}
-                        <div className="relative group border-2 border-dashed border-gray-300 rounded-xl p-1 hover:border-[#4f46e5] transition-colors bg-gray-50 h-64">
+                        <div className="relative group border-2 border-dashed border-gray-300 rounded-xl p-1 hover:border-[#4f46e5] transition-colors bg-gray-50 h-48 md:h-64">
                             {localConfig.coverImage ? (
                                 <div className="relative h-full rounded-lg overflow-hidden">
                                     <img 
@@ -817,9 +838,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </label>
                             )}
                         </div>
-                        {/* ... sliders ... */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                            {/* MOBILE SLIDER */}
                             <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                                 <label className="text-xs font-bold text-gray-500 uppercase block mb-3 flex items-center gap-2">
                                     <Smartphone size={14} /> Posición Vertical (Móvil)
@@ -834,7 +853,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 />
                             </div>
 
-                            {/* DESKTOP SLIDER */}
                             <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                                 <label className="text-xs font-bold text-gray-500 uppercase block mb-3 flex items-center gap-2">
                                     <Monitor size={14} /> Posición Vertical (Escritorio)
@@ -851,7 +869,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                     </div>
                     
-                    {/* ... Color pickers ... */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                          <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                             <Palette className="text-[#4f46e5]" /> Colores Principales
@@ -863,7 +880,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <ColorPicker label="Secundario" value={localConfig.theme?.secondaryColor} onChange={(c) => updateLocalTheme('secondaryColor', c)} fallback="#4f46e5"/>
                          </div>
                     </div>
-                    {/* ... Fonts ... */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                          <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                             <Type className="text-[#4f46e5]" /> Colores de Texto (Encabezado)
@@ -899,10 +915,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
              </div>
           )}
           
-          {/* ... [ CATEGORIES TAB - NO CHANGES ] ... */}
+          {/* ... [ CATEGORIES TAB ] ... */}
           {activeTab === 'categories' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* ... existing code ... */}
                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
                     <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                         <Plus className="text-[#4f46e5]" /> Añadir Categoría
@@ -949,20 +964,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           )}
 
-          {/* ... General ... */}
+          {/* ... [ GENERAL TAB ] ... */}
           {activeTab === 'general' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-6">
-                      {/* ... Info Básica ... */}
                       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><FileText className="text-[#4f46e5]" /> Información</h3>
                            <div className="space-y-4">
-                               {/* ... inputs ... */}
                                <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-1">Título</label>
                                     <input type="text" value={localConfig.title} onChange={(e) => setLocalConfig({...localConfig, title: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-1">Fecha</label>
                                         <input type="text" value={localConfig.date} onChange={(e) => setLocalConfig({...localConfig, date: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none" />
@@ -1023,11 +1036,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                </label>
                            </div>
 
-                           {/* SECCIÓN NUEVA: FORMATOS PERMITIDOS */}
                            <div className="mt-4 pt-4 border-t border-gray-100">
                                <label className="block text-xs font-bold text-gray-500 uppercase mb-3">Formatos Permitidos</label>
                                <div className="flex gap-4">
-                                   {/* Photo Toggle */}
                                    <label className={`flex-1 flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${localConfig.allowedMediaTypes?.includes('photo') ? 'bg-indigo-50 border-indigo-200' : 'hover:bg-gray-50'}`}>
                                        <div className="flex items-center gap-2">
                                            <ImageIcon size={18} className={localConfig.allowedMediaTypes?.includes('photo') ? 'text-indigo-600' : 'text-gray-400'} />
@@ -1046,8 +1057,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                            className="w-4 h-4 accent-[#4f46e5]" 
                                        />
                                    </label>
-
-                                   {/* Video Toggle */}
                                    <label className={`flex-1 flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${localConfig.allowedMediaTypes?.includes('video') ? 'bg-indigo-50 border-indigo-200' : 'hover:bg-gray-50'}`}>
                                        <div className="flex items-center gap-2">
                                            <Video size={18} className={localConfig.allowedMediaTypes?.includes('video') ? 'text-indigo-600' : 'text-gray-400'} />
@@ -1074,7 +1083,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
                        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><HardDrive className="text-[#4f46e5]" /> Límites</h3>
                        <div className="space-y-4">
-                           {/* LÍMITE GLOBAL DEL EVENTO (NUEVO) */}
                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex justify-between">
                                     <span>Límite Total del Evento (GB)</span>
@@ -1086,8 +1094,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     onChange={(e) => setLocalConfig({...localConfig, totalEventSizeLimitGB: Number(e.target.value)})} 
                                     className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4f46e5] outline-none mb-3"
                                 />
-                                
-                                {/* VISUALIZACIÓN DE USO */}
                                 <div className="mt-2">
                                     <div className="flex justify-between text-xs mb-1 font-medium text-gray-600">
                                         <span>Consumo Actual</span>
@@ -1139,28 +1145,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
               </div>
           )}
-
-          {/* ... Rest of tabs ... */}
+          
+          {/* ... [ GALLERY TAB ] ... */}
           {activeTab === 'gallery' && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[calc(100vh-150px)]">
-                 <div className="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4 shrink-0 bg-white z-20 sticky top-0">
-                    {/* ... gallery toolbar ... */}
-                    <div className="flex items-center bg-gray-100 p-1 rounded-lg">
-                        <button onClick={() => setGalleryView('active')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${galleryView === 'active' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Activa</button>
-                        <button onClick={() => setGalleryView('archived')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${galleryView === 'archived' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Ocultos</button>
-                        <button onClick={() => setGalleryView('trash')} className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${galleryView === 'trash' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-red-500'}`}>Papelera</button>
+                 <div className="px-4 md:px-6 py-4 border-b border-gray-200 flex flex-col xl:flex-row items-center justify-between gap-4 shrink-0 bg-white z-20 sticky top-0">
+                    <div className="flex items-center bg-gray-100 p-1 rounded-lg w-full xl:w-auto overflow-x-auto">
+                        <button onClick={() => setGalleryView('active')} className={`flex-1 xl:flex-none px-3 md:px-4 py-2 rounded-md text-xs md:text-sm font-medium transition-all whitespace-nowrap ${galleryView === 'active' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Activa</button>
+                        <button onClick={() => setGalleryView('archived')} className={`flex-1 xl:flex-none px-3 md:px-4 py-2 rounded-md text-xs md:text-sm font-medium transition-all whitespace-nowrap ${galleryView === 'archived' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Ocultos</button>
+                        <button onClick={() => setGalleryView('trash')} className={`flex-1 xl:flex-none px-3 md:px-4 py-2 rounded-md text-xs md:text-sm font-medium transition-all whitespace-nowrap ${galleryView === 'trash' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-red-500'}`}>Papelera</button>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2 text-xs font-bold text-green-600 bg-green-50 px-3 py-1.5 rounded-full mr-2 border border-green-100 animate-pulse">
-                            <CloudLightning size={14} />
-                            Sincronizado: {displayedPhotos.length}
+                    <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto justify-end">
+                        <div className="flex items-center gap-2 text-[10px] md:text-xs font-bold text-green-600 bg-green-50 px-3 py-1.5 rounded-full border border-green-100 animate-pulse">
+                            <CloudLightning size={12} />
+                            Sync: {displayedPhotos.length}
                         </div>
                         
                         <GoogleDriveImporter onFilesSelected={onDriveImport} isProcessing={isProcessing} />
                         {selectedIds.length > 0 && (
                              <div className="flex items-center gap-2 animate-fade-in">
-                                 <span className="text-xs font-bold text-[#4f46e5] mr-2">{selectedIds.length} seleccionados</span>
+                                 <span className="text-xs font-bold text-[#4f46e5] mr-2 hidden md:inline">{selectedIds.length} selec.</span>
                                  {galleryView === 'trash' ? (
                                      <>
                                          <button onClick={() => onBulkRestore(selectedIds)} className="px-3 py-1.5 bg-green-50 text-green-600 rounded-md text-xs font-bold">Restaurar</button>
@@ -1174,20 +1179,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                  )}
                              </div>
                         )}
-                        <button onClick={toggleSelectAll} className="text-gray-500 hover:text-[#4f46e5] flex items-center gap-2 text-sm font-medium px-2">
-                            {displayedPhotos.length > 0 && displayedPhotos.every(p => selectedIds.includes(p.id)) ? <><CheckSquare size={18} /> Todo</> : <><Square size={18} /> Todo</>}
+                        <button onClick={toggleSelectAll} className="text-gray-500 hover:text-[#4f46e5] flex items-center gap-2 text-xs md:text-sm font-medium px-2">
+                            {displayedPhotos.length > 0 && displayedPhotos.every(p => selectedIds.includes(p.id)) ? <><CheckSquare size={16} /> <span className="hidden md:inline">Todo</span></> : <><Square size={16} /> <span className="hidden md:inline">Seleccionar Todo</span></>}
                         </button>
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 bg-gray-50 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50 custom-scrollbar">
                     {displayedPhotos.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
                              <Image size={64} className="mb-4" />
                              <p>No hay imágenes en esta sección</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 md:gap-4">
                             {displayedPhotos.map(photo => (
                                 <div key={photo.id} className={`relative group aspect-square rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${selectedIds.includes(photo.id) ? 'border-[#4f46e5] ring-2 ring-[#4f46e5]/20' : 'border-gray-200 hover:border-gray-300'}`} onClick={() => toggleSelection(photo.id)}>
                                     <div className={`absolute top-2 left-2 z-10 w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedIds.includes(photo.id) ? 'bg-[#4f46e5] border-[#4f46e5] text-white' : 'bg-white/80 border-gray-300'}`}>
@@ -1210,13 +1215,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
           )}
           
-          {/* ... Clients & Participants ... (No significant changes needed, just keeping structure) */}
+          {/* ... [ CLIENTS TAB ] ... */}
           {activeTab === 'clients' && (
-               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8">
                    <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
                       <UserCheck className="text-[#4f46e5]" /> Gestión de Cliente & Distribución
                   </h3>
-                  {/* ... same content ... */}
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                       <div className="space-y-6">
                           <div>
@@ -1258,7 +1262,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
           {activeTab === 'participants' && (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                 {/* ... same content ... */}
                  <div className="lg:col-span-4 space-y-6">
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
