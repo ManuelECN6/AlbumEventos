@@ -56,6 +56,22 @@
   }
 }
 </script>
+    <script type="module">
+      /* Configuración de entorno segura: Usamos una IIFE para no ensuciar window */
+      (function() {
+        const geminiUrl = window.location.origin + '/api-proxy';
+        // El servidor reemplazará estos valores, pero al estar dentro de la función,
+        // no serán accesibles globalmente como window.API_KEY
+        const apiKey = 'UNUSED_PLACEHOLDER_FOR_API_KEY';
+        const geminiKey = 'UNUSED_PLACEHOLDER_FOR_API_KEY';
+        
+        // Inyectamos solo en process.env que es lo que busca la app
+        window.process = window.process || {};
+        window.process.env = window.process.env || {};
+        window.process.env.API_KEY = apiKey;
+        window.process.env.GEMINI_API_KEY = geminiKey;
+      })();
+    </script>
 </head>
   <body class="bg-album-bg text-gray-800 font-sans antialiased">
     <div id="root"></div>
