@@ -473,11 +473,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
                                 className={`w-full px-4 py-3 rounded-md border outline-none transition-all ${
                                     isNameLocked 
                                     ? 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed' 
-                                    : 'border-gray-300 focus:ring-2 text-gray-700 placeholder-gray-400'
+                                    : 'bg-white border-gray-300 focus:ring-2 text-gray-900 placeholder-gray-400'
                                 }`}
                                 style={!isNameLocked ? { 
                                     '--tw-ring-color': hexToRgba(theme.primaryColor, 0.5),
-                                    '--tw-ring-opacity': 0.5
+                                    '--tw-ring-opacity': 0.5,
+                                    colorScheme: 'light' // Fuerza modo claro para cursor/autofill
                                 } as React.CSSProperties : {}}
                             />
                             {isNameLocked && (
