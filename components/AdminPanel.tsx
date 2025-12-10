@@ -851,6 +851,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     value={mobilePos} 
                                     onChange={(e) => updateLocalTheme('coverImagePositionY', Number(e.target.value))}
                                     className="w-full accent-[#4f46e5] h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                    style={{ colorScheme: 'light' }}
                                 />
                             </div>
 
@@ -865,6 +866,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     value={desktopPos} 
                                     onChange={(e) => updateLocalTheme('coverImagePositionDesktopY', Number(e.target.value))}
                                     className="w-full accent-[#4f46e5] h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                    style={{ colorScheme: 'light' }}
                                 />
                             </div>
                         </div>
@@ -1028,14 +1030,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                        <div className={`p-2 rounded-full ${localConfig.allowUploads ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{localConfig.allowUploads ? <Upload size={18} /> : <XIcon size={18} />}</div>
                                        <div><span className="block font-bold text-sm">Permitir Subidas</span><span className="text-xs text-gray-500">Invitados pueden aportar</span></div>
                                    </div>
-                                   <input type="checkbox" checked={localConfig.allowUploads} onChange={(e) => setLocalConfig({...localConfig, allowUploads: e.target.checked})} className="w-5 h-5 accent-[#4f46e5]" />
+                                   <input type="checkbox" checked={localConfig.allowUploads} onChange={(e) => setLocalConfig({...localConfig, allowUploads: e.target.checked})} className="w-5 h-5 accent-[#4f46e5]" style={{ colorScheme: 'light' }} />
                                </label>
                                <label className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
                                    <div className="flex items-center gap-3">
                                        <div className={`p-2 rounded-full ${localConfig.allowDownloads ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{localConfig.allowDownloads ? <Download size={18} /> : <XIcon size={18} />}</div>
                                        <div><span className="block font-bold text-sm">Permitir Descargas</span><span className="text-xs text-gray-500">Invitados pueden bajar fotos</span></div>
                                    </div>
-                                   <input type="checkbox" checked={localConfig.allowDownloads} onChange={(e) => setLocalConfig({...localConfig, allowDownloads: e.target.checked})} className="w-5 h-5 accent-[#4f46e5]" />
+                                   <input type="checkbox" checked={localConfig.allowDownloads} onChange={(e) => setLocalConfig({...localConfig, allowDownloads: e.target.checked})} className="w-5 h-5 accent-[#4f46e5]" style={{ colorScheme: 'light' }} />
                                </label>
                            </div>
 
@@ -1058,6 +1060,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 setLocalConfig({ ...localConfig, allowedMediaTypes: newTypes });
                                            }} 
                                            className="w-4 h-4 accent-[#4f46e5]" 
+                                           style={{ colorScheme: 'light' }}
                                        />
                                    </label>
                                    <label className={`flex-1 flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${localConfig.allowedMediaTypes?.includes('video') ? 'bg-indigo-50 border-indigo-200' : 'hover:bg-gray-50'}`}>
@@ -1076,6 +1079,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 setLocalConfig({ ...localConfig, allowedMediaTypes: newTypes });
                                            }} 
                                            className="w-4 h-4 accent-[#4f46e5]" 
+                                           style={{ colorScheme: 'light' }}
                                        />
                                    </label>
                                </div>
