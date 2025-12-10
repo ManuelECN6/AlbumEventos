@@ -20,6 +20,25 @@
               'album-brown': '#a87b51', // For upload button
               'album-accent': '#ef8585', // For active toggles
               'album-blue': '#4f46e5',
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-out',
+              'fade-in-up': 'fadeInUp 0.7s ease-out',
+              'slide-up': 'slideUp 0.3s ease-out',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              fadeInUp: {
+                '0%': { opacity: '0', transform: 'translateY(20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(100%)' },
+                '100%': { transform: 'translateY(0)' },
+              }
             }
           }
         }
@@ -40,7 +59,21 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #9ca3af;
       }
+      
+      /* Clases de utilidad para scroll horizontal */
+      .custom-scrollbar::-webkit-scrollbar {
+        height: 6px;
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #e5e7eb;
+        border-radius: 10px;
+      }
     </style>
+    
   <script type="importmap">
 {
   "imports": {

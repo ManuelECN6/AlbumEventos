@@ -106,7 +106,8 @@ export const Lightbox: React.FC<LightboxProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-fade-in overflow-y-auto select-none">
+    // RESTAURACIÓN DE CLASES + TAGS MV
+    <div className="MV-visor-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-fade-in overflow-y-auto select-none">
       
       {/* Close Button (Outside) */}
       <button 
@@ -136,7 +137,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
       )}
 
       {/* Main Content Card */}
-      <div className="bg-white w-full max-w-[800px] rounded-lg shadow-2xl flex flex-col overflow-hidden max-h-[95vh] relative">
+      <div className="MV-visor-card bg-white w-full max-w-[800px] rounded-lg shadow-2xl flex flex-col overflow-hidden max-h-[95vh] relative">
         
         {/* Report Confirmation Overlay */}
         {showReportConfirm && (
@@ -170,9 +171,9 @@ export const Lightbox: React.FC<LightboxProps> = ({
           </div>
         )}
 
-        {/* Image Area - Standard (Downloads Allowed) */}
+        {/* Image Area */}
         <div 
-            className="flex-1 relative bg-black/5 flex items-center justify-center overflow-hidden min-h-[300px] group"
+            className="MV-visor-media-container flex-1 relative bg-black/5 flex items-center justify-center overflow-hidden min-h-[300px] group"
         >
            {photo.type === 'video' ? (
               <video 
@@ -191,7 +192,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
         </div>
 
         {/* Footer / Info Area */}
-        <div className="bg-white px-6 py-5 flex flex-col gap-5 shrink-0 border-t border-gray-100 overflow-y-auto">
+        <div className="MV-visor-info-panel bg-white px-6 py-5 flex flex-col gap-5 shrink-0 border-t border-gray-100 overflow-y-auto">
           
           <div className="flex flex-col items-center gap-5">
              {/* Metadata Section (Author & Date) */}
