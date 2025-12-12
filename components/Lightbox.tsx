@@ -131,15 +131,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
     // ESTRUCTURA REFACTORIZADA CON SEMÁNTICA HTML5 + CLASES MV
     <section className="MV-visor-overlay fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto select-none bg-black/95 backdrop-blur-md animate-fade-in">
       
-      {/* Close Button (Outside) */}
-      <button 
-        onClick={onClose} 
-        className="fixed p-2 text-white transition-colors rounded-full top-4 right-4 bg-white/10 hover:bg-white/20 z-[60] MV-btn-cerrar"
-      >
-        <X size={24} />
-      </button>
-
-      {/* Navigation Buttons (Outside) */}
+      {/* Navigation Buttons (Outside) - Mobile hide, Desktop show */}
       {hasPrev && (
         <button 
           onClick={(e) => { e.stopPropagation(); onPrev(); }}
@@ -161,6 +153,15 @@ export const Lightbox: React.FC<LightboxProps> = ({
       {/* Main Content Card */}
       <article className="MV-visor-card w-full max-w-[800px] bg-white rounded-lg shadow-2xl flex flex-col overflow-hidden max-h-[95vh] relative">
         
+        {/* BOTÓN CERRAR - AHORA DENTRO DE LA TARJETA PARA MEJOR VISIBILIDAD MÓVIL */}
+        <button 
+          onClick={onClose} 
+          className="absolute top-3 right-3 z-[60] p-2 bg-black/50 text-white rounded-full hover:bg-black/70 backdrop-blur-sm transition-all shadow-sm"
+          aria-label="Cerrar"
+        >
+          <X size={20} />
+        </button>
+
         {/* Report Confirmation Overlay */}
         {showReportConfirm && (
           <div className="absolute inset-0 z-[70] flex items-center justify-center bg-white/95 backdrop-blur-sm p-6 animate-fade-in MV-confirmacion-overlay">

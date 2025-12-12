@@ -1584,6 +1584,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setPreviewPhoto(null)} />
               <div className="relative bg-white w-full max-w-4xl rounded-xl overflow-hidden shadow-2xl flex flex-col md:flex-row max-h-[90vh]">
+                  
+                  {/* --- CORRECCIÓN: BOTÓN CERRAR AÑADIDO --- */}
+                  <button 
+                    onClick={() => setPreviewPhoto(null)}
+                    className="absolute top-3 right-3 z-50 p-2 bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors backdrop-blur-sm md:text-gray-500 md:bg-transparent md:hover:bg-gray-100"
+                  >
+                    <XIcon size={24} />
+                  </button>
+
                   <div className="flex-1 bg-black flex items-center justify-center relative min-h-[300px]">
                       {previewPhoto.type === 'video' ? <video src={previewPhoto.url} controls className="max-h-full max-w-full" /> : <img src={previewPhoto.url} className="max-h-full max-w-full object-contain" />}
                   </div>
