@@ -1321,7 +1321,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 return (
                                     <div 
                                         key={photo.id || idx} 
-                                        className="rounded-lg shadow-sm border overflow-hidden"
+                                        className="rounded-lg shadow-sm border overflow-hidden group relative"
                                         style={{ 
                                             backgroundColor: theme.cardBackgroundColor || '#ffffff',
                                             borderColor: 'rgba(0,0,0,0.05)'
@@ -1342,12 +1342,52 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                                         <div className="bg-gray-100 aspect-[4/3] relative overflow-hidden">
                                             {photo.thumbnail ? (
-                                                <img src={photo.thumbnail} className="w-full h-full object-cover" />
+                                                <img src={photo.thumbnail} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                                             ) : (
                                                 <div className="w-full h-full flex items-center justify-center bg-gray-200"><ImageIcon size={24} className="text-gray-400"/></div>
                                             )}
-                                            <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-sm text-white text-[8px] px-1.5 py-0.5 rounded uppercase font-bold">
+                                            
+                                            {/* Category Tag */}
+                                            <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-sm text-white text-[8px] px-1.5 py-0.5 rounded uppercase font-bold z-10">
                                                 {photo.category || 'General'}
+                                            </div>
+
+                                            {/* --- OVERLAY ACTIONS (BOTONES FLOTANTES) --- */}
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center gap-2 z-20">
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); setPreviewPhoto(photo); }} 
+                                                    className="p-2 bg-white rounded-full text-gray-700 hover:text-blue-600 shadow-lg hover:scale-110 transition-transform" 
+                                                    title="Ver"
+                                                >
+                                                    <Maximize2 size={16} />
+                                                </button>
+                                                
+                                                {photo.isDeleted ? (
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); onRestorePhoto(photo.id); }} 
+                                                        className="p-2 bg-white rounded-full text-green-600 hover:text-green-700 shadow-lg hover:scale-110 transition-transform" 
+                                                        title="Restaurar"
+                                                    >
+                                                        <RotateCcw size={16} />
+                                                    </button>
+                                                ) : (
+                                                    <>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); onArchivePhoto(photo.id); }} 
+                                                            className={`p-2 bg-white rounded-full shadow-lg hover:scale-110 transition-transform ${photo.isArchived ? 'text-indigo-600' : 'text-gray-600 hover:text-indigo-600'}`} 
+                                                            title={photo.isArchived ? "Mostrar" : "Ocultar"}
+                                                        >
+                                                            {photo.isArchived ? <Eye size={16} /> : <EyeOff size={16} />}
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); onDeletePhoto(photo.id); }} 
+                                                            className="p-2 bg-white rounded-full text-red-500 hover:text-red-600 shadow-lg hover:scale-110 transition-transform" 
+                                                            title="Papelera"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
 
