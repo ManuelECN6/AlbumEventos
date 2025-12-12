@@ -315,6 +315,7 @@ export const processAndUploadPhoto = async (
     title: file.name,
     category: 'General',
     likes: 0,
+    reports: 0, // Nuevo campo inicializado
     likedByMe: false,
     isArchived: false,
     isDeleted: false,
@@ -359,6 +360,46 @@ export const togglePhotoLike = async (eventId: string, photoId: string, incremen
                 transaction.update(eventRef, { photos });
             }
         });
+    }
+};
+
+export const reportPhoto = async (eventId: string, photoId: string) => {
+    const loc = await getPhotoLocation(eventId, photoId);
+    if (loc === 'subcollection') {
+        const ref = doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId);
+        await updateDoc(ref, { reports: increment(1) });
+    } else {
+         const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+         await runTransaction(db, async (transaction) => {
+             const eventDoc = await transaction.get(eventRef);
+             if (!eventDoc.exists()) return;
+             const photos = (eventDoc.data() as EventConfig).photos || [];
+             const idx = photos.findIndex(p => p.id === photoId);
+             if (idx >= 0) {
+                 photos[idx].reports = (photos[idx].reports || 0) + 1;
+                 transaction.update(eventRef, { photos });
+             }
+         });
+    }
+};
+
+export const resolvePhotoReport = async (eventId: string, photoId: string) => {
+    const loc = await getPhotoLocation(eventId, photoId);
+    if (loc === 'subcollection') {
+        const ref = doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId);
+        await updateDoc(ref, { reports: 0 });
+    } else {
+         const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+         await runTransaction(db, async (transaction) => {
+             const eventDoc = await transaction.get(eventRef);
+             if (!eventDoc.exists()) return;
+             const photos = (eventDoc.data() as EventConfig).photos || [];
+             const idx = photos.findIndex(p => p.id === photoId);
+             if (idx >= 0) {
+                 photos[idx].reports = 0;
+                 transaction.update(eventRef, { photos });
+             }
+         });
     }
 };
 

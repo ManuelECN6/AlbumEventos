@@ -23,6 +23,7 @@ export interface Photo {
   description?: string;
   category: string;
   likes: number;
+  reports?: number; // Nuevo campo para contar reportes
   likedByMe?: boolean;
   isArchived?: boolean; // Hidden from guests
   isDeleted?: boolean; // Soft deleted (In Recycle Bin)

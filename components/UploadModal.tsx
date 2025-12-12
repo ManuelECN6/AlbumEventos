@@ -3,6 +3,25 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { X, Upload, User, Image as ImageIcon, Info, AlertCircle, Trash2, CheckCircle, Video, Loader2, Lock } from 'lucide-react';
 import { EventConfig } from '../types';
 
+// MOVED TO TOP TO PREVENT HOISTING ERRORS
+const CameraIcon = ({ className, size }: { className?: string, size?: number }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+    <circle cx="12" cy="13" r="3"/>
+  </svg>
+);
+
 interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -84,7 +103,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
 
   // 2. Detectar si este usuario ya existe en el evento
   const existingUserInEvent = useMemo(() => {
-      return event.photos.find(p => p.deviceId === effectiveDeviceId);
+      return event.photos?.find(p => p.deviceId === effectiveDeviceId);
   }, [event.photos, effectiveDeviceId]);
 
   // 3. Inicializar nombre: O el del evento, o el del localStorage, o vacío
@@ -119,11 +138,11 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
 
   // 5. Calcular conteos previos estrictos por tipo
   const previousUserPhotos = useMemo(() => 
-      event.photos.filter(p => p.deviceId === effectiveDeviceId && p.type !== 'video').length
+      (event.photos || []).filter(p => p.deviceId === effectiveDeviceId && p.type !== 'video').length
   , [event.photos, effectiveDeviceId]);
 
   const previousUserVideos = useMemo(() =>
-      event.photos.filter(p => p.deviceId === effectiveDeviceId && p.type === 'video').length
+      (event.photos || []).filter(p => p.deviceId === effectiveDeviceId && p.type === 'video').length
   , [event.photos, effectiveDeviceId]);
 
   // Theme defaults
@@ -134,17 +153,22 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
     secondaryTextColor: '#ffffff'
   };
 
-  const hexToRgba = (hex: string, alpha: number) => {
-    let c: any;
-    if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
-      c = hex.substring(1).split('');
-      if (c.length === 3) {
-        c = [c[0], c[0], c[1], c[1], c[2], c[2]];
-      }
-      c = '0x' + c.join('');
-      return 'rgba(' + [(c >> 16) & 255, (c >> 8) & 255, c & 255].join(',') + ',' + alpha + ')';
+  const hexToRgba = (hex: any, alpha: number) => {
+    try {
+        if (!hex || typeof hex !== 'string') return 'transparent';
+        let c: any;
+        if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
+            c = hex.substring(1).split('');
+            if (c.length === 3) {
+                c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+            }
+            c = '0x' + c.join('');
+            return 'rgba(' + [(c >> 16) & 255, (c >> 8) & 255, c & 255].join(',') + ',' + alpha + ')';
+        }
+        return hex;
+    } catch (e) {
+        return 'transparent';
     }
-    return hex;
   };
 
   if (!isOpen) return null;
@@ -161,14 +185,14 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
       'video/3gpp'
   ];
   
-  // Nuevo: límite individual de video
   const MAX_VIDEO_MB = event.maxVideoSizeMB || 50; 
   const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024;
   
   const getAcceptString = () => {
       let types: string[] = [];
-      if (event.allowedMediaTypes.includes('photo')) types = [...types, ...ALLOWED_IMAGE_TYPES];
-      if (event.allowedMediaTypes.includes('video')) types = [...types, ...ALLOWED_VIDEO_TYPES];
+      const allowed = event.allowedMediaTypes || ['photo'];
+      if (allowed.includes('photo')) types = [...types, ...ALLOWED_IMAGE_TYPES];
+      if (allowed.includes('video')) types = [...types, ...ALLOWED_VIDEO_TYPES];
       return types.join(',');
   };
 
@@ -198,6 +222,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
     // Calcular tamaño acumulado de la sesión actual
     let currentSessionBytes = selectedFiles.reduce((acc, f) => acc + f.size, 0);
 
+    const allowed = event.allowedMediaTypes || ['photo'];
+
     Array.from(fileList).forEach(file => {
       if (totalEventLimitExceeded) return;
 
@@ -212,9 +238,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
 
       // 2. Check Type
       let isAllowedType = false;
-      if (isPhoto && event.allowedMediaTypes.includes('photo')) {
+      if (isPhoto && allowed.includes('photo')) {
           isAllowedType = ALLOWED_IMAGE_TYPES.includes(file.type);
-      } else if (isVideo && event.allowedMediaTypes.includes('video')) {
+      } else if (isVideo && allowed.includes('video')) {
           isAllowedType = ALLOWED_VIDEO_TYPES.includes(file.type);
       }
 
@@ -386,9 +412,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
     }
   };
 
+  const allowed = event.allowedMediaTypes || ['photo'];
   const acceptedStr = [
-      event.allowedMediaTypes.includes('photo') ? 'Imágenes' : '',
-      event.allowedMediaTypes.includes('video') ? 'Videos' : ''
+      allowed.includes('photo') ? 'Imágenes' : '',
+      allowed.includes('video') ? 'Videos' : ''
   ].filter(Boolean).join(' y ');
 
   // Display counts: Total (Previous + Current) / Max
@@ -497,7 +524,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
                              <Info size={12} /> Límites de subida
                          </h4>
                          <ul className="space-y-3 text-sm text-gray-600">
-                             {event.allowedMediaTypes.includes('photo') && (
+                             {allowed.includes('photo') && (
                                  <li className="flex justify-between items-center bg-white p-2 rounded border border-gray-100">
                                      <span className="flex items-center gap-2 text-xs font-medium"><ImageIcon size={14} /> Fotos</span>
                                      <div className="flex items-center gap-2">
@@ -507,7 +534,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
                                      </div>
                                  </li>
                              )}
-                             {event.allowedMediaTypes.includes('video') && (
+                             {allowed.includes('video') && (
                                  <li className="flex justify-between items-center bg-white p-2 rounded border border-gray-100">
                                      <span className="flex items-center gap-2 text-xs font-medium"><Video size={14} /> Videos</span>
                                      <div className="flex items-center gap-2">
@@ -518,7 +545,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
                                  </li>
                              )}
                              <div className="pt-2 border-t border-gray-200">
-                                 {event.allowedMediaTypes.includes('video') && (
+                                 {allowed.includes('video') && (
                                      <li className="flex justify-between text-xs text-gray-500">
                                          <span>Max. Video:</span>
                                          <span className="font-bold">{MAX_VIDEO_MB} MB</span>
@@ -640,22 +667,3 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
     </div>
   );
 };
-
-// Helper icon for the header
-const CameraIcon = ({ className, size }: { className?: string, size?: number }) => (
-  <svg 
-    xmlns="http://www.w3.org/2000/svg" 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    className={className}
-  >
-    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
-    <circle cx="12" cy="13" r="3"/>
-  </svg>
-);

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
-import { Save, Plus, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Smartphone, Monitor, CloudLightning, Ticket, Video, Image as ImageIcon, RefreshCw, AlertTriangle, Menu } from 'lucide-react';
+import { Save, Plus, Settings, Layout, Image, ArrowLeft, Check, X as XIcon, Folder, Users, Search, Grid, Eye, EyeOff, Lock, Unlock, ExternalLink, Palette, Upload, Type, FileText, Loader2, UserPlus, Trash2, CheckSquare, Square, UserCheck, HardDrive, Maximize2, RotateCcw, Flag, Calendar, User, Download, Camera, Smartphone, Monitor, CloudLightning, Ticket, Video, Image as ImageIcon, RefreshCw, AlertTriangle, Menu, ShieldAlert, CheckCircle } from 'lucide-react';
 import { uploadFileToFirebase, recalculateEventStorageUsage } from '../services/firebaseService';
 import { GoogleDriveImporter } from './GoogleDriveImporter';
 import QRCode from "react-qr-code";
@@ -25,10 +25,11 @@ interface AdminPanelProps {
   onBulkRestore: (ids: string[]) => void;
   onBulkPermanentDelete: (ids: string[]) => Promise<void>;
   onDriveImport: (files: File[]) => Promise<void>;
+  onResolveReport: (id: string) => Promise<void>;
   onExit: () => void;
 }
 
-// --- PLANTILLA POR DEFECTO (CONFIGURACIÓN BLAZE / ALTA CAPACIDAD) ---
+// --- PLANTILLA POR DEFECTO ---
 const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     id: '',
     title: 'Nuevo Evento',
@@ -41,7 +42,7 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     allowUploads: true,
     allowDownloads: false, 
     allowedMediaTypes: ['photo', 'video'],
-    storageLimit: 100, // Max MB por Foto
+    storageLimit: 100, 
     maxPhotosPerPerson: 50, 
     maxVideosPerPerson: 10, 
     maxVideoSizeMB: 512, 
@@ -77,32 +78,31 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
     isDriveBackupEnabled: false
 };
 
-const hexToRgba = (hex: string, alpha: number) => {
-    let c: any;
-    if (typeof hex === 'string' && /^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
-        c = hex.substring(1).split('');
-        if (c.length === 3) {
-            c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+// --- FUNCIÓN SEGURA PARA COLORES (CRASH PROOF) ---
+const hexToRgba = (hex: any, alpha: number) => {
+    try {
+        if (!hex || typeof hex !== 'string') return 'transparent';
+        if (hex.startsWith('rgba')) return hex;
+        
+        let c: any;
+        if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
+            c = hex.substring(1).split('');
+            if (c.length === 3) {
+                c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+            }
+            c = '0x' + c.join('');
+            return 'rgba(' + [(c >> 16) & 255, (c >> 8) & 255, c & 255].join(',') + ',' + alpha + ')';
         }
-        c = '0x' + c.join('');
-        return 'rgba(' + [(c >> 16) & 255, (c >> 8) & 255, c & 255].join(',') + ',' + alpha + ')';
+        return hex;
+    } catch (e) {
+        return 'transparent';
     }
-    return hex || '#000000';
 };
 
 // --- COMPONENTE COLOR PICKER ---
 const ColorPicker = ({ label, value, onChange, fallback }: { label: string, value?: string, onChange: (val: string) => void, fallback: string }) => {
-    const [internalColor, setInternalColor] = useState(value || fallback);
-
-    useEffect(() => {
-        setInternalColor(value || fallback);
-    }, [value, fallback]);
-
-    const handleChange = (newColor: string) => {
-        setInternalColor(newColor);
-        onChange(newColor);
-    };
-
+    const safeValue = value || fallback;
+    
     return (
       <div className="flex flex-col">
           <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-wider">{label}</label>
@@ -110,30 +110,25 @@ const ColorPicker = ({ label, value, onChange, fallback }: { label: string, valu
               <div className="relative w-full h-12 rounded-xl border-2 border-gray-200 shadow-sm overflow-hidden cursor-pointer group hover:border-[#4f46e5] transition-colors bg-white">
                    <input 
                       type="color" 
-                      value={internalColor}
-                      onChange={(e) => handleChange(e.target.value)}
+                      value={safeValue}
+                      onChange={(e) => onChange(e.target.value)}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                       title="Clic para elegir color"
                   />
                   <div 
                       className="absolute inset-0 z-10 pointer-events-none transition-colors duration-200"
-                      style={{ backgroundColor: internalColor }}
+                      style={{ backgroundColor: safeValue }}
                   />
               </div>
               <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-mono font-bold">#</span>
                   <input 
                       type="text" 
-                      value={internalColor.replace('#', '').toUpperCase()}
+                      value={(safeValue || '').replace('#', '').toUpperCase()}
                       onChange={(e) => {
                           const val = e.target.value;
                           if (/^[0-9A-Fa-f]*$/.test(val) && val.length <= 6) {
-                              const hex = '#' + val;
-                              if (val.length === 3 || val.length === 6) {
-                                  handleChange(hex);
-                              } else {
-                                  setInternalColor('#' + val); 
-                              }
+                              onChange('#' + val); 
                           }
                       }}
                       maxLength={6}
@@ -147,12 +142,15 @@ const ColorPicker = ({ label, value, onChange, fallback }: { label: string, valu
     );
 };
 
-// --- LIVE PREVIEW REALISTA ---
+// --- LIVE PREVIEW BLINDADO ---
 const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePhotos: Photo[] }) => {
-    const theme = config.theme || DEFAULT_EVENT_TEMPLATE.theme!;
+    // Fusión segura de tema
+    const defaultTheme = DEFAULT_EVENT_TEMPLATE.theme!;
+    const theme = { ...defaultTheme, ...(config.theme || {}) };
+    
     const fontClass = theme.fontFamily === 'serif' ? 'font-serif' : 'font-sans';
     
-    const previewPhotos = activePhotos.length > 0 ? activePhotos.slice(0, 4) : [
+    const previewPhotos = activePhotos && activePhotos.length > 0 ? activePhotos.slice(0, 4) : [
         { id: '1', thumbnail: 'https://images.unsplash.com/photo-1511895426328-dc8714191300?w=400', author: { name: 'Ana', initials: 'AN', avatarColor: '#3b82f6' }, likes: 12, category: 'General', createdAt: new Date().toISOString(), title: 'Ejemplo', width: 400, height: 400 },
         { id: '2', thumbnail: 'https://images.unsplash.com/photo-1511285560982-1351cdeb9821?w=400', author: { name: 'Luis', initials: 'LU', avatarColor: '#ef4444' }, likes: 8, category: 'General', createdAt: new Date().toISOString(), title: 'Ejemplo', width: 400, height: 400 }
     ] as Photo[];
@@ -161,13 +159,10 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
     const participants = config.participants || [];
     const confirmedCount = participants.filter(p => p.status === 'confirmed').length;
     const limit = config.participantsCount || 0;
-    
     const participantsDisplay = limit === 0 ? confirmedCount : `${confirmedCount}/${limit}`;
-    
     const title = config.title || 'Nuevo Evento';
     const subtitle = config.subtitle || '';
     const date = config.date || '';
-
     const mobilePos = theme.coverImagePositionY || 50;
 
     return (
@@ -206,6 +201,7 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
 
                     <div className={`relative z-10 pt-10 pb-4 px-4 ${config.coverImage ? '' : 'pt-10'}`}>
                         <div className="flex flex-col items-center gap-3 text-center">
+                            {/* --- CORRECCIÓN AVATAR --- */}
                             {theme.avatarImage ? (
                                 <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/20 shadow-sm shrink-0">
                                     <img src={theme.avatarImage} className="w-full h-full object-cover" />
@@ -215,7 +211,7 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                                     className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold shadow-sm shrink-0 uppercase border-2 border-white/20"
                                     style={{ backgroundColor: theme.avatarBackgroundColor, color: theme.avatarTextColor }}
                                 >
-                                    {title.substring(0, 2)}
+                                    {(title || 'EV').substring(0, 2)}
                                 </div>
                             )}
 
@@ -241,7 +237,7 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                                         <span>Fotos</span>
                                     </div>
                                     <div className="flex flex-col items-center">
-                                        <span className="text-xs leading-none">{previewPhotos.reduce((a, b) => a + b.likes, 0)}</span>
+                                        <span className="text-xs leading-none">{previewPhotos.reduce((a, b) => a + (b.likes || 0), 0)}</span>
                                         <span>Likes</span>
                                     </div>
                                     <div className="flex flex-col items-center">
@@ -267,43 +263,51 @@ const MobilePreview = ({ config, activePhotos }: { config: EventConfig, activePh
                 
                  <div className="px-3 pb-4">
                     <div className="grid grid-cols-1 gap-4">
-                        {previewPhotos.map((photo) => (
-                            <div 
-                                key={photo.id} 
-                                className="rounded-lg shadow-sm border overflow-hidden"
-                                style={{ 
-                                    backgroundColor: theme.cardBackgroundColor || '#ffffff',
-                                    borderColor: 'rgba(0,0,0,0.05)'
-                                }}
-                            >
-                                <div className="p-2 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: photo.author.avatarColor, color: '#fff' }}>
-                                            {photo.author.initials}
+                        {previewPhotos.map((photo, idx) => {
+                            // --- PROTECCIÓN TOTAL CONTRA DATOS NULOS EN FOTOS ---
+                            const author = photo?.author || { name: 'Anónimo', initials: 'AN', avatarColor: '#999' };
+                            
+                            return (
+                                <div 
+                                    key={photo.id || idx} 
+                                    className="rounded-lg shadow-sm border overflow-hidden"
+                                    style={{ 
+                                        backgroundColor: theme.cardBackgroundColor || '#ffffff',
+                                        borderColor: 'rgba(0,0,0,0.05)'
+                                    }}
+                                >
+                                    <div className="p-2 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: author.avatarColor, color: '#fff' }}>
+                                                {author.initials}
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-[10px]" style={{ color: theme.cardTextColor }}>{author.name}</h3>
+                                                <p className="text-[8px] opacity-80" style={{ color: theme.cardTextColor }}>Hace un momento</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h3 className="font-bold text-[10px]" style={{ color: theme.cardTextColor }}>{photo.author.name}</h3>
-                                            <p className="text-[8px] opacity-80" style={{ color: theme.cardTextColor }}>Hace un momento</p>
+                                        <Flag size={10} className="opacity-30" style={{ color: theme.cardTextColor }} />
+                                    </div>
+
+                                    <div className="bg-gray-100 aspect-[4/3] relative overflow-hidden">
+                                        {photo.thumbnail ? (
+                                            <img src={photo.thumbnail} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center bg-gray-200"><ImageIcon size={20} className="text-gray-400" /></div>
+                                        )}
+                                        <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-sm text-white text-[8px] px-1.5 py-0.5 rounded uppercase font-bold">
+                                            {photo.category || 'General'}
                                         </div>
                                     </div>
-                                    <Flag size={10} className="opacity-30" style={{ color: theme.cardTextColor }} />
-                                </div>
 
-                                <div className="bg-gray-100 aspect-[4/3] relative overflow-hidden">
-                                     <img src={photo.thumbnail} className="w-full h-full object-cover" />
-                                     <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-sm text-white text-[8px] px-1.5 py-0.5 rounded uppercase font-bold">
-                                         {photo.category}
-                                     </div>
-                                </div>
-
-                                <div className="p-2 border-t" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
-                                    <div className="flex items-center gap-1 text-[10px] font-medium" style={{ color: theme.cardTextColor }}>
-                                        {/* <Heart size={12} /> */}
-                                        <span>{photo.likes} Likes</span>
+                                    <div className="p-2 border-t" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
+                                        <div className="flex items-center gap-1 text-[10px] font-medium" style={{ color: theme.cardTextColor }}>
+                                            <span>{photo.likes || 0} Likes</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             </div>
@@ -332,21 +336,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onBulkRestore, 
   onBulkPermanentDelete, 
   onDriveImport, 
+  onResolveReport,
   onExit 
 }) => {
   const activeEvent = events?.find(e => e.id === currentEventId) || events?.[0] || DEFAULT_EVENT_TEMPLATE;
 
+  // ESTADO LOCAL INICIALIZADO DE FORMA SEGURA
   const [localConfig, setLocalConfig] = useState<EventConfig>(() => ({
       ...DEFAULT_EVENT_TEMPLATE,
       ...activeEvent,
-      theme: { ...DEFAULT_EVENT_TEMPLATE.theme, ...activeEvent.theme },
-      participants: activeEvent.participants || [],
-      categories: activeEvent.categories || DEFAULT_EVENT_TEMPLATE.categories,
-      photos: activeEvent.photos || [],
-      allowedMediaTypes: activeEvent.allowedMediaTypes || ['photo']
+      theme: { ...DEFAULT_EVENT_TEMPLATE.theme, ...(activeEvent?.theme || {}) },
+      participants: activeEvent?.participants || [],
+      categories: activeEvent?.categories || DEFAULT_EVENT_TEMPLATE.categories,
+      photos: activeEvent?.photos || [],
+      allowedMediaTypes: activeEvent?.allowedMediaTypes || ['photo']
   }));
 
-  const [activeTab, setActiveTab] = useState<'general' | 'categories' | 'gallery' | 'clients' | 'participants' | 'appearance'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'categories' | 'gallery' | 'clients' | 'participants' | 'appearance' | 'reports'>('general');
   const [searchTerm, setSearchTerm] = useState('');
   const [galleryView, setGalleryView] = useState<'active' | 'archived' | 'trash'>('active');
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
@@ -367,17 +373,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   
   const [baseUrl, setBaseUrl] = useState(() => {
       if (typeof window !== 'undefined') {
-          const isDevOrPreview = 
-              window.location.hostname === 'localhost' || 
-              window.location.hostname === '127.0.0.1' ||
-              window.location.hostname.includes('usercontent.goog') ||
-              window.location.hostname.includes('run.app') ||
-              window.location.hostname.includes('web.app');
-
-          if (isDevOrPreview) {
-               return localStorage.getItem('album_custom_domain') || 'https://album.mediumvisuals.com';
-          }
-          return window.location.origin;
+          return localStorage.getItem('album_custom_domain') || window.location.origin;
       }
       return '';
   });
@@ -396,11 +392,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setLocalConfig({ 
         ...DEFAULT_EVENT_TEMPLATE,
         ...activeEvent,
-        theme: { ...DEFAULT_EVENT_TEMPLATE.theme, ...activeEvent.theme },
-        participants: activeEvent.participants || [],
-        categories: activeEvent.categories || DEFAULT_EVENT_TEMPLATE.categories,
-        photos: activeEvent.photos || [],
-        allowedMediaTypes: activeEvent.allowedMediaTypes || ['photo']
+        theme: { ...DEFAULT_EVENT_TEMPLATE.theme, ...(activeEvent?.theme || {}) },
+        participants: activeEvent?.participants || [],
+        categories: activeEvent?.categories || DEFAULT_EVENT_TEMPLATE.categories,
+        photos: activeEvent?.photos || [],
+        allowedMediaTypes: activeEvent?.allowedMediaTypes || ['photo']
     });
   }, [activeEvent]);
 
@@ -459,10 +455,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
   
   const isContentOwnedBy = (photo: Photo, participant: Participant) => {
+      if (!photo) return false;
       if (photo.deviceId && photo.deviceId === participant.id) return true;
-      const legacyId = `legacy-${photo.author.name.replace(/\s+/g, '-').toLowerCase()}`;
+      
+      const authorName = photo.author?.name || '';
+      const legacyId = `legacy-${authorName.replace(/\s+/g, '-').toLowerCase()}`;
       if (participant.id === legacyId) return true;
-      if (photo.author.name === participant.name) return true;
+      if (authorName === participant.name) return true;
       return false;
   };
 
@@ -506,8 +505,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         const path = `eventos/${activeEvent.id}/assets/avatar_${timestamp}_${sanitizedName}`;
         const url = await uploadFileToFirebase(file, path);
         
+        // --- ARREGLO AVATAR: Forzamos la actualización segura del tema ---
         const currentTheme = localConfig.theme || DEFAULT_EVENT_TEMPLATE.theme!;
         const updatedTheme = { ...currentTheme, avatarImage: url };
+        
         setLocalConfig(prev => ({ ...prev, theme: updatedTheme }));
         onUpdateField('theme', updatedTheme);
       } catch (error) {
@@ -536,7 +537,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               ctx.drawImage(img, 0, 0, size, size);
               const pngFile = canvas.toDataURL("image/png");
               const downloadLink = document.createElement("a");
-              downloadLink.download = `QR_${localConfig.title.replace(/\s+/g, '_')}_Impresion.png`;
+              downloadLink.download = `QR_${(localConfig.title || 'Evento').replace(/\s+/g, '_')}_Impresion.png`;
               downloadLink.href = pngFile;
               downloadLink.click();
           }
@@ -586,10 +587,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const displayedPhotos = (currentEventPhotos || []).filter(p => {
+      if (!p) return false;
       if (galleryView === 'trash') return p.isDeleted;
       if (galleryView === 'archived') return p.isArchived && !p.isDeleted;
       return !p.isDeleted && !p.isArchived;
   });
+
+  const reportedPhotos = (currentEventPhotos || []).filter(p => (p.reports || 0) > 0 && !p.isDeleted);
 
   const toggleSelectAll = () => {
       const targetIds = displayedPhotos.map(p => p.id);
@@ -640,10 +644,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const finalBaseUrl = getCleanUrl(baseUrl);
   const finalLink = `${finalBaseUrl}?event=${activeEvent.publicToken || activeEvent.id}`;
   
-  const mobilePos = localConfig.theme?.coverImagePositionY || 50;
-  const desktopPos = localConfig.theme?.coverImagePositionDesktopY ?? mobilePos;
+  const theme = {
+      ...DEFAULT_EVENT_TEMPLATE.theme!,
+      ...(localConfig.theme || {})
+  };
 
-  // Calculo de uso
+  const mobilePos = theme.coverImagePositionY || 50;
+  const desktopPos = theme.coverImagePositionDesktopY ?? mobilePos;
+
   const usageBytes = localConfig.totalUsageBytes || 0;
   const limitBytes = (localConfig.totalEventSizeLimitGB || 5) * 1024 * 1024 * 1024;
   const usageGB = (usageBytes / (1024 * 1024 * 1024)).toFixed(2);
@@ -653,7 +661,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans text-gray-800">
       
-      {/* MOBILE SIDEBAR OVERLAY */}
       {isMobileSidebarOpen && (
         <div 
             className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
@@ -661,7 +668,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         />
       )}
 
-      {/* SIDEBAR RESPONSIVE */}
       <aside 
         className={`fixed inset-y-0 left-0 z-50 w-72 bg-gray-900 text-gray-300 flex flex-col shadow-2xl transition-transform duration-300 lg:static lg:translate-x-0 shrink-0 ${
             isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
@@ -675,7 +681,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </h2>
                 <p className="text-[10px] text-gray-500 mt-1 tracking-wider uppercase">Gestor de Eventos</p>
             </div>
-            {/* CLOSE BUTTON MOBILE */}
             <button 
                 onClick={() => setIsMobileSidebarOpen(false)}
                 className="lg:hidden p-1 text-gray-400 hover:text-white rounded-md hover:bg-gray-800 transition-colors"
@@ -706,7 +711,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div>
                 <h3 className="text-[10px] font-bold text-gray-500 uppercase mb-3 px-2 tracking-widest">Mis Álbumes ({events?.length || 0})</h3>
                 <ul className="space-y-1">
-                    {events?.filter(e => e.title.toLowerCase().includes(searchTerm.toLowerCase())).map(event => (
+                    {/* SAFE LIST RENDERING: Check e.title exists */}
+                    {events?.filter(e => (e.title || '').toLowerCase().includes(searchTerm.toLowerCase())).map(event => (
                     <li key={event.id}>
                         <button
                         onClick={() => { onSelectEvent(event.id); setIsMobileSidebarOpen(false); }}
@@ -714,8 +720,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         >
                          <Folder size={16} className={currentEventId === event.id ? 'text-[#4f46e5]' : 'text-gray-500'} />
                          <div className="text-left truncate">
-                             <span className="block font-medium text-sm truncate">{event.title}</span>
-                             <span className="block text-[10px] text-gray-500">{event.clientName}</span>
+                             <span className="block font-medium text-sm truncate">{event.title || 'Sin Título'}</span>
+                             <span className="block text-[10px] text-gray-500">{event.clientName || 'Sin Cliente'}</span>
                          </div>
                         </button>
                     </li>
@@ -735,14 +741,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             { id: 'categories', icon: Grid, label: 'Categorías' },
                             { id: 'participants', icon: Users, label: 'Participantes' },
                             { id: 'clients', icon: UserCheck, label: 'Clientes & QR' },
-                            { id: 'gallery', icon: Image, label: 'Galería' },
+                            { id: 'gallery', icon: ImageIcon, label: 'Galería' },
+                            { id: 'reports', icon: ShieldAlert, label: `Moderación${reportedPhotos.length > 0 ? ` (${reportedPhotos.length})` : ''}` },
                         ].map((item) => (
                             <li key={item.id}>
                                 <button
                                     onClick={() => { setActiveTab(item.id as any); setIsMobileSidebarOpen(false); }}
                                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm ${activeTab === item.id ? 'bg-[#4f46e5] text-white font-bold' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
                                 >
-                                    <item.icon size={18} />
+                                    <item.icon size={18} className={item.id === 'reports' && reportedPhotos.length > 0 ? 'text-red-500 animate-pulse' : ''} />
                                     {item.label}
                                 </button>
                             </li>
@@ -759,12 +766,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
       <main className="flex-1 overflow-y-auto relative bg-gray-50 flex flex-col">
-        {/* Header RESPONSIVE */}
         <header className="sticky top-0 z-20 bg-white border-b border-gray-200 px-4 md:px-8 py-4 flex flex-col md:flex-row items-start md:items-center justify-between shadow-sm gap-4">
             <div className="flex items-center gap-3 w-full md:w-auto">
-                {/* HAMBURGER BUTTON MOBILE */}
                 <button 
                     onClick={() => setIsMobileSidebarOpen(true)}
                     className="lg:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -779,8 +783,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         {activeTab === 'gallery' && 'Contenido'}
                         {activeTab === 'clients' && 'Acceso & QR'}
                         {activeTab === 'participants' && 'Invitados'}
+                        {activeTab === 'reports' && 'Moderación de Contenido'}
                     </h1>
-                    <p className="text-gray-500 text-xs md:text-sm truncate max-w-[200px] md:max-w-none">Editando: {localConfig.title}</p>
+                    <p className="text-gray-500 text-xs md:text-sm truncate max-w-[200px] md:max-w-none">Editando: {localConfig.title || 'Evento Nuevo'}</p>
                 </div>
             </div>
             <div className="flex gap-2 self-end md:self-auto w-full md:w-auto justify-end">
@@ -804,13 +809,87 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         <div className="p-4 md:p-8 max-w-7xl mx-auto w-full">
           
-          {/* ... [ APPEARANCE TAB ] ... */}
+          {/* ... [ OTHER TABS OMITTED FOR BREVITY, ONLY SHOWING REPORTS TAB LOGIC ] ... */}
+          
+          {activeTab === 'reports' && (
+               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 md:p-8">
+                   <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                      <ShieldAlert className="text-red-500" /> Reportes Pendientes
+                  </h3>
+                  
+                  {reportedPhotos.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                          <CheckCircle size={48} className="mb-4 text-green-500 opacity-50" />
+                          <p className="text-lg font-medium">Todo limpio</p>
+                          <p className="text-sm">No hay fotos reportadas pendientes de revisión.</p>
+                      </div>
+                  ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                          {reportedPhotos.map(photo => (
+                              <div key={photo.id} className="bg-white border border-red-100 rounded-xl shadow-sm overflow-hidden flex flex-col">
+                                  <div className="relative aspect-video bg-gray-100">
+                                      {photo.type === 'video' ? (
+                                           <video src={photo.thumbnail} className="w-full h-full object-cover" muted />
+                                      ) : (
+                                           <img src={photo.thumbnail} className="w-full h-full object-cover" />
+                                      )}
+                                      <div className="absolute top-2 right-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-md flex items-center gap-1">
+                                          <Flag size={10} /> {photo.reports}
+                                      </div>
+                                  </div>
+                                  <div className="p-4 flex-1 flex flex-col">
+                                      <div className="flex items-center gap-2 mb-3">
+                                          <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-bold">
+                                              {photo.author.initials}
+                                          </div>
+                                          <div>
+                                              <p className="text-xs font-bold text-gray-800">{photo.author.name}</p>
+                                              <p className="text-[10px] text-gray-500">{new Date(photo.createdAt).toLocaleDateString()}</p>
+                                          </div>
+                                      </div>
+                                      
+                                      <div className="mt-auto grid grid-cols-2 gap-2">
+                                          <button 
+                                            onClick={() => onResolveReport(photo.id)}
+                                            className="py-2 bg-green-50 text-green-600 hover:bg-green-100 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                                          >
+                                              <Check size={14} /> Aprobar
+                                          </button>
+                                          <button 
+                                            onClick={() => {
+                                                if (confirm("¿Estás seguro de enviar esta foto a la papelera?")) {
+                                                    onDeletePhoto(photo.id);
+                                                }
+                                            }}
+                                            className="py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                                          >
+                                              <Trash2 size={14} /> Eliminar
+                                          </button>
+                                          <button 
+                                            onClick={() => {
+                                                 onArchivePhoto(photo.id);
+                                                 // También limpiamos el reporte al archivar para que salga de esta lista
+                                                 onResolveReport(photo.id);
+                                            }}
+                                            className="col-span-2 py-2 bg-gray-100 text-gray-600 hover:bg-gray-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                                          >
+                                              <EyeOff size={14} /> Ocultar (Archivar)
+                                          </button>
+                                      </div>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+               </div>
+          )}
+          
           {activeTab === 'appearance' && (
              <div className="flex flex-col lg:flex-row gap-8 items-start">
                  <div className="flex-1 space-y-6 w-full max-w-4xl">
                      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
-                            <Image className="text-[#4f46e5]" /> Portada
+                            <ImageIcon className="text-[#4f46e5]" /> Portada
                         </h3>
                         <div className="relative group border-2 border-dashed border-gray-300 rounded-xl p-1 hover:border-[#4f46e5] transition-colors bg-gray-50 h-48 md:h-64">
                             {localConfig.coverImage ? (
@@ -820,7 +899,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                         className="w-full h-full object-cover transition-all duration-300" 
                                         style={{ 
                                             objectPosition: `50% ${desktopPos}%`,
-                                            filter: `blur(${localConfig.theme?.coverBlur || 0}px)` 
+                                            filter: `blur(${theme.coverBlur || 0}px)` 
                                         }}
                                     />
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-20">
@@ -877,12 +956,48 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <Palette className="text-[#4f46e5]" /> Colores Principales
                          </h3>
                          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                            <ColorPicker label="Fondo" value={localConfig.theme?.backgroundColor} onChange={(c) => updateLocalTheme('backgroundColor', c)} fallback="#f5f0e6"/>
-                            <ColorPicker label="Texto" value={localConfig.theme?.textColor} onChange={(c) => updateLocalTheme('textColor', c)} fallback="#1f2937"/>
-                            <ColorPicker label="Primario" value={localConfig.theme?.primaryColor} onChange={(c) => updateLocalTheme('primaryColor', c)} fallback="#a87b51"/>
-                            <ColorPicker label="Secundario" value={localConfig.theme?.secondaryColor} onChange={(c) => updateLocalTheme('secondaryColor', c)} fallback="#4f46e5"/>
+                            <ColorPicker label="Fondo" value={theme.backgroundColor} onChange={(c) => updateLocalTheme('backgroundColor', c)} fallback="#f5f0e6"/>
+                            <ColorPicker label="Texto" value={theme.textColor} onChange={(c) => updateLocalTheme('textColor', c)} fallback="#1f2937"/>
+                            <ColorPicker label="Primario" value={theme.primaryColor} onChange={(c) => updateLocalTheme('primaryColor', c)} fallback="#a87b51"/>
+                            <ColorPicker label="Secundario" value={theme.secondaryColor} onChange={(c) => updateLocalTheme('secondaryColor', c)} fallback="#4f46e5"/>
                          </div>
                     </div>
+                    
+                    {/* AVATAR UPLOAD SECTION */}
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
+                            <User className="text-[#4f46e5]" /> Avatar / Logo
+                         </h3>
+                         <div className="flex items-center gap-6">
+                             <div className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-gray-200 shadow-md group">
+                                 {theme.avatarImage ? (
+                                     <img src={theme.avatarImage} className="w-full h-full object-cover" />
+                                 ) : (
+                                     <div 
+                                        className="w-full h-full flex items-center justify-center font-bold text-xl uppercase"
+                                        style={{ backgroundColor: theme.avatarBackgroundColor, color: theme.avatarTextColor }}
+                                     >
+                                         {(localConfig.title || 'EV').substring(0, 2)}
+                                     </div>
+                                 )}
+                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                     <label className="cursor-pointer">
+                                         {isUploadingAvatar ? <Loader2 className="animate-spin text-white" /> : <Upload className="text-white" />}
+                                         <input type="file" className="hidden" onChange={handleAvatarChange} accept="image/*" />
+                                     </label>
+                                 </div>
+                             </div>
+                             <div>
+                                 <p className="text-sm font-bold text-gray-700 mb-1">Imagen de Perfil</p>
+                                 <p className="text-xs text-gray-500 mb-3">Aparece en la parte superior del álbum.</p>
+                                 <div className="flex gap-3">
+                                     <ColorPicker label="Fondo (si no hay imagen)" value={theme.avatarBackgroundColor} onChange={(c) => updateLocalTheme('avatarBackgroundColor', c)} fallback="#374151" />
+                                     <ColorPicker label="Texto (si no hay imagen)" value={theme.avatarTextColor} onChange={(c) => updateLocalTheme('avatarTextColor', c)} fallback="#ffffff" />
+                                 </div>
+                             </div>
+                         </div>
+                    </div>
+
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                          <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                             <Type className="text-[#4f46e5]" /> Colores de Texto (Encabezado)
@@ -890,19 +1005,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
                             <ColorPicker 
                                 label="Título Principal" 
-                                value={localConfig.theme?.headerTitleColor} 
+                                value={theme.headerTitleColor} 
                                 onChange={(c) => updateLocalTheme('headerTitleColor', c)} 
                                 fallback="#1f2937"
                             />
                             <ColorPicker 
                                 label="Fecha y Subtítulo" 
-                                value={localConfig.theme?.headerDateColor} 
+                                value={theme.headerDateColor} 
                                 onChange={(c) => updateLocalTheme('headerDateColor', c)} 
                                 fallback="#6b7280"
                             />
                              <ColorPicker 
                                 label="Estadísticas" 
-                                value={localConfig.theme?.statsTextColor} 
+                                value={theme.statsTextColor} 
                                 onChange={(c) => updateLocalTheme('statsTextColor', c)} 
                                 fallback="#6b7280"
                             />
@@ -1166,10 +1281,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                     <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto justify-end">
                         <div className="flex items-center gap-2 text-[10px] md:text-xs font-bold text-green-600 bg-green-50 px-3 py-1.5 rounded-full border border-green-100 animate-pulse">
-                            <CloudLightning size={12} />
-                            Sync: {displayedPhotos.length}
+                            <CloudLightning size={12} /> Sync: {displayedPhotos.length}
                         </div>
-                        
                         <GoogleDriveImporter onFilesSelected={onDriveImport} isProcessing={isProcessing} />
                         {selectedIds.length > 0 && (
                              <div className="flex items-center gap-2 animate-fade-in">
@@ -1196,27 +1309,56 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50 custom-scrollbar">
                     {displayedPhotos.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
-                             <Image size={64} className="mb-4" />
+                             <ImageIcon size={64} className="mb-4" />
                              <p>No hay imágenes en esta sección</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 md:gap-4">
-                            {displayedPhotos.map(photo => (
-                                <div key={photo.id} className={`relative group aspect-square rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${selectedIds.includes(photo.id) ? 'border-[#4f46e5] ring-2 ring-[#4f46e5]/20' : 'border-gray-200 hover:border-gray-300'}`} onClick={() => toggleSelection(photo.id)}>
-                                    <div className={`absolute top-2 left-2 z-10 w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedIds.includes(photo.id) ? 'bg-[#4f46e5] border-[#4f46e5] text-white' : 'bg-white/80 border-gray-300'}`}>
-                                        {selectedIds.includes(photo.id) && <Check size={12} strokeWidth={4} />}
+                            {displayedPhotos.map((photo, idx) => {
+                                // --- SAFE AUTHOR ---
+                                const author = photo?.author || { name: 'Anónimo', initials: 'AN', avatarColor: '#999' };
+
+                                return (
+                                    <div 
+                                        key={photo.id || idx} 
+                                        className="rounded-lg shadow-sm border overflow-hidden"
+                                        style={{ 
+                                            backgroundColor: theme.cardBackgroundColor || '#ffffff',
+                                            borderColor: 'rgba(0,0,0,0.05)'
+                                        }}
+                                    >
+                                        <div className="p-2 flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: author.avatarColor, color: '#fff' }}>
+                                                    {author.initials}
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-bold text-[10px]" style={{ color: theme.cardTextColor }}>{author.name}</h3>
+                                                    <p className="text-[8px] opacity-80" style={{ color: theme.cardTextColor }}>Hace un momento</p>
+                                                </div>
+                                            </div>
+                                            <Flag size={10} className="opacity-30" style={{ color: theme.cardTextColor }} />
+                                        </div>
+
+                                        <div className="bg-gray-100 aspect-[4/3] relative overflow-hidden">
+                                            {photo.thumbnail ? (
+                                                <img src={photo.thumbnail} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center bg-gray-200"><ImageIcon size={24} className="text-gray-400"/></div>
+                                            )}
+                                            <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-sm text-white text-[8px] px-1.5 py-0.5 rounded uppercase font-bold">
+                                                {photo.category || 'General'}
+                                            </div>
+                                        </div>
+
+                                        <div className="p-2 border-t" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
+                                            <div className="flex items-center gap-1 text-[10px] font-medium" style={{ color: theme.cardTextColor }}>
+                                                <span>{photo.likes || 0} Likes</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    {photo.type === 'video' ? (
-                                        <video src={photo.thumbnail} className="w-full h-full object-cover" muted />
-                                    ) : (
-                                        <img src={photo.thumbnail} className="w-full h-full object-cover" loading="lazy" />
-                                    )}
-                                    <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                                        <button onClick={(e) => { e.stopPropagation(); setPreviewPhoto(photo); }} className="bg-white/90 hover:bg-white p-1.5 rounded-md shadow-sm"><Maximize2 size={14} /></button>
-                                        <button onClick={(e) => { e.stopPropagation(); setPhotoToDelete(photo); }} className="bg-white/90 hover:bg-white p-1.5 rounded-md shadow-sm text-red-500"><Trash2 size={14} /></button>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -1263,7 +1405,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                            <div className="bg-white p-4 rounded-xl shadow-sm mb-6">
                                <QRCode id="qr-code-svg" value={finalLink} size={180} level="H" />
                            </div>
-                           <button onClick={handleDownloadQR} className="flex items-center gap-2 px-6 py-3 bg-white border border-gray-300 rounded-full text-gray-700 font-bold hover:bg-gray-100 transition-all shadow-sm">Descargar QR</button>
+                           <button onClick={handleDownloadQR} className="flex items-center gap-2 px-6 py-3 bg-white border border-gray-300 rounded-full text-gray-700 font-bold hover:bg-gray-100 transition-all shadow-sm">Descargar QR PNG</button>
                       </div>
                   </div>
               </div>

@@ -1,5 +1,6 @@
+
 import React, { useEffect, useState } from 'react';
-import { X, ChevronLeft, ChevronRight, Heart, Flag, User, Clock, Download } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Heart, Flag, User, Clock, Download, CheckCircle, ShieldAlert } from 'lucide-react';
 import { Photo } from '../types';
 
 interface LightboxProps {
@@ -32,11 +33,15 @@ export const Lightbox: React.FC<LightboxProps> = ({
   allowDownloads = false 
 }) => {
   const [showReportConfirm, setShowReportConfirm] = useState(false);
+  const [isReported, setIsReported] = useState(false); // Estado para el contenido del MODAL
+  const [reportSuccess, setReportSuccess] = useState(false); // Nuevo estado para el BOTÓN del footer
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // Reset confirmation state when photo changes
+  // Reset states when photo changes
   useEffect(() => {
     setShowReportConfirm(false);
+    setIsReported(false);
+    setReportSuccess(false);
     setIsDownloading(false);
   }, [photo?.id]);
 
@@ -105,6 +110,23 @@ export const Lightbox: React.FC<LightboxProps> = ({
     }
   };
 
+  const handleReportAction = () => {
+      onReport(photo.id);
+      setIsReported(true); // Feedback en el modal
+      setReportSuccess(true); // Feedback en el botón principal
+
+      // Cerrar modal automáticamente después de 2 segundos
+      setTimeout(() => {
+          setShowReportConfirm(false);
+          setIsReported(false);
+      }, 2500);
+
+      // Revertir el botón a su estado normal después de 4 segundos
+      setTimeout(() => {
+          setReportSuccess(false);
+      }, 4000);
+  };
+
   return (
     // ESTRUCTURA REFACTORIZADA CON SEMÁNTICA HTML5 + CLASES MV
     <section className="MV-visor-overlay fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto select-none bg-black/95 backdrop-blur-md animate-fade-in">
@@ -141,32 +163,46 @@ export const Lightbox: React.FC<LightboxProps> = ({
         
         {/* Report Confirmation Overlay */}
         {showReportConfirm && (
-          <div className="absolute inset-0 z-[70] flex items-center justify-center bg-white/90 backdrop-blur-sm p-6 animate-fade-in MV-confirmacion-overlay">
+          <div className="absolute inset-0 z-[70] flex items-center justify-center bg-white/95 backdrop-blur-sm p-6 animate-fade-in MV-confirmacion-overlay">
             <div className="w-full max-w-sm text-center">
-              <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 text-red-500 bg-red-100 rounded-full animate-bounce">
-                <Flag size={32} className="fill-current" />
-              </div>
-              <h3 className="mb-2 text-xl font-bold text-gray-800">¿Reportar esta foto?</h3>
-              <p className="mb-6 text-sm text-gray-500">
-                Si consideras que esta imagen es inapropiada u ofensiva, confirma para enviarla a revisión.
-              </p>
-              <div className="flex justify-center gap-3">
-                <button
-                  onClick={() => setShowReportConfirm(false)}
-                  className="px-6 py-2.5 rounded-lg bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={() => {
-                    onReport(photo.id);
-                    setShowReportConfirm(false);
-                  }}
-                  className="px-6 py-2.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors shadow-md"
-                >
-                  Sí, reportar
-                </button>
-              </div>
+              
+              {isReported ? (
+                  // --- VISTA DE ÉXITO ---
+                  <div className="animate-fade-in-up flex flex-col items-center">
+                      <div className="flex items-center justify-center w-20 h-20 mx-auto mb-4 text-green-500 bg-green-100 rounded-full animate-bounce">
+                        <CheckCircle size={40} className="fill-current" strokeWidth={3} />
+                      </div>
+                      <h3 className="mb-2 text-xl font-bold text-gray-800">¡Reporte Recibido!</h3>
+                      <p className="mb-6 text-sm text-gray-500">
+                        Gracias por ayudarnos. Un administrador revisará esta foto pronto.
+                      </p>
+                  </div>
+              ) : (
+                  // --- VISTA DE CONFIRMACIÓN ---
+                  <>
+                    <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 text-red-500 bg-red-100 rounded-full">
+                        <ShieldAlert size={32} className="fill-current" />
+                    </div>
+                    <h3 className="mb-2 text-xl font-bold text-gray-800">¿Reportar esta foto?</h3>
+                    <p className="mb-6 text-sm text-gray-500">
+                        Si consideras que esta imagen es inapropiada u ofensiva, confirma para enviarla a revisión.
+                    </p>
+                    <div className="flex justify-center gap-3">
+                        <button
+                        onClick={() => setShowReportConfirm(false)}
+                        className="px-6 py-2.5 rounded-lg bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
+                        >
+                        Cancelar
+                        </button>
+                        <button
+                        onClick={handleReportAction}
+                        className="px-6 py-2.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors shadow-md flex items-center gap-2"
+                        >
+                        <Flag size={16} /> Sí, reportar
+                        </button>
+                    </div>
+                  </>
+              )}
             </div>
           </div>
         )}
@@ -239,13 +275,18 @@ export const Lightbox: React.FC<LightboxProps> = ({
                   </button>
               )}
               
-              {/* Report Button */}
+              {/* Report Button (Updated with visual feedback) */}
               <button 
-                onClick={() => setShowReportConfirm(true)}
-                className="flex items-center justify-center gap-2 px-6 py-2 text-sm font-medium text-yellow-600 transition-colors bg-white border border-yellow-400 rounded-md hover:bg-yellow-50"
+                onClick={() => !reportSuccess && setShowReportConfirm(true)}
+                disabled={reportSuccess}
+                className={`flex items-center justify-center gap-2 px-6 py-2 text-sm font-medium transition-all duration-300 border rounded-md ${
+                    reportSuccess
+                    ? 'bg-green-50 border-green-500 text-green-600 cursor-default'
+                    : 'text-yellow-600 bg-white border-yellow-400 hover:bg-yellow-50'
+                }`}
               >
-                <Flag size={16} />
-                Reportar
+                {reportSuccess ? <CheckCircle size={16} /> : <Flag size={16} />}
+                {reportSuccess ? 'Reportado' : 'Reportar'}
               </button>
             </div>
           </div>

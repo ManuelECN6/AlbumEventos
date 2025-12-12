@@ -1,4 +1,5 @@
-import { initializeApp } from "firebase/app";
+
+import * as firebaseApp from "firebase/app";
 import { initializeFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -13,11 +14,18 @@ export const firebaseConfig = {
   measurementId: "G-2KK3ELW168"
 };
 
-// Inicializar Firebase
-const app = initializeApp(firebaseConfig);
+// Inicializar Firebase de forma modular estándar
+// Fix: Use named imports via namespace to avoid 'no exported member' error in some TS environments
+// Fix: Use getApps() to prevent double initialization during hot-reload
 
-// Exportar los servicios de Base de Datos y Almacenamiento para usarlos en la app
-// Usamos initializeFirestore con long polling forzado para evitar timeouts de conexión (Error de 10s)
+// Workaround for missing exports in some environment type definitions
+const { initializeApp, getApps, getApp } = firebaseApp as any;
+
+const app = getApps().length === 0 
+  ? initializeApp(firebaseConfig) 
+  : getApp();
+
+// Exportar los servicios de Base de Datos y Almacenamiento
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 });
