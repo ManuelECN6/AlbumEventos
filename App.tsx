@@ -359,10 +359,31 @@ export default function App() {
     
     if (!isLoading) {
         if (events.length > 0) {
+            
+            // --- FIX: NAVEGACIÓN ADMIN PANEL ---
+            // Si estamos en modo admin y ya tenemos un evento seleccionado, 
+            // NO permitimos que el token de la URL (si existe) lo sobrescriba.
+            // Esto permite cambiar de álbum en el sidebar sin que la app te devuelva al del link original.
+            if (isAdminMode && currentEventId) {
+                 // Verificamos que el evento seleccionado siga existiendo en la lista actual
+                 // (por si acaso se borró mientras navegábamos)
+                 const stillExists = events.some(e => e.id === currentEventId);
+                 if (stillExists) {
+                     return; 
+                 }
+            }
+            
             if (token) {
                 const foundEvent = events.find(e => e.publicToken === token || e.id === token);
-                if (foundEvent) setCurrentEventId(foundEvent.id);
-                else setCurrentEventId(events[0].id);
+                // Si encontramos el evento del token, lo ponemos. 
+                // Si NO lo encontramos (ej: en admin mode carga lista parcial o token invalido), 
+                // entonces fallback al primero o al que ya estaba.
+                if (foundEvent) {
+                     setCurrentEventId(foundEvent.id);
+                } else if (!currentEventId) {
+                     // Solo fallback al primero si no hay nada seleccionado
+                     setCurrentEventId(events[0].id);
+                }
             } else if (!currentEventId) {
                 setCurrentEventId(events[0].id);
             }
@@ -983,6 +1004,12 @@ export default function App() {
                         // FIX: Remove history manipulation that crashes in iframes/previews
                         setIsAdminMode(true); 
                         setShowLoginModal(false); 
+                        
+                        // FIX: Limpiar la URL para evitar que el 'event' parameter bloquee la navegación
+                        const newUrl = new URL(window.location.href);
+                        newUrl.searchParams.delete('event');
+                        newUrl.searchParams.set('admin', 'true');
+                        window.history.pushState({}, '', newUrl.toString());
                     } else { 
                         setLoginError(true); 
                     }
