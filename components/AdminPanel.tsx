@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { EventConfig, Category, Photo, Participant } from '../types';
 import { 
@@ -431,6 +430,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
   }, [activeEvent]);
 
+  // ... (REST OF METHODS, NO CHANGES UNTIL RENDER) ...
   const handleCreateEventClick = () => {
       setNewEventTitle('');
       setShowCreateEventModal(true);
@@ -722,6 +722,7 @@ const handleConfirmCleanup = async () => {
       }));
   };
 
+  // ... (REST OF UTILS) ...
   const safeParticipants = localConfig.participants || [];
   const safeCategories = localConfig.categories || DEFAULT_EVENT_TEMPLATE.categories;
 
@@ -754,6 +755,7 @@ const handleConfirmCleanup = async () => {
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans text-gray-800">
       
+      {/* ... (SIDEBAR) ... */}
       {isMobileSidebarOpen && (
         <div 
             className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
@@ -766,6 +768,7 @@ const handleConfirmCleanup = async () => {
             isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
+        {/* ... (SIDEBAR CONTENT) ... */}
         <div className="p-6 border-b border-gray-800 flex items-center justify-between">
             <div>
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -862,6 +865,7 @@ const handleConfirmCleanup = async () => {
       </aside>
 
       <main className="flex-1 overflow-y-auto relative bg-gray-50 flex flex-col">
+        {/* ... (HEADER) ... */}
         <header className="sticky top-0 z-20 bg-white border-b border-gray-200 px-4 md:px-8 py-4 flex flex-col md:flex-row items-start md:items-center justify-between shadow-sm gap-4">
             <div className="flex items-center gap-3 w-full md:w-auto">
                 <button 
@@ -904,8 +908,10 @@ const handleConfirmCleanup = async () => {
 
         <div className="p-4 md:p-8 max-w-7xl mx-auto w-full">
             
+          {/* ... (GENERAL TAB) ... */}
           {activeTab === 'general' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* ... Same content ... */}
                   <div className="space-y-6">
                       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><FileText className="text-[#4f46e5]" /> Información</h3>
@@ -1119,29 +1125,87 @@ const handleConfirmCleanup = async () => {
                     {/* 1. Cabecera & Portada */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4"><Layout className="text-[#4f46e5]" /> Cabecera & Portada</h3>
+                        
                         <div className="mb-6">
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Imagen de Portada</label>
-                            <div className="flex items-center gap-4">
-                                <div className="h-20 w-32 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 relative group">
-                                    {localConfig.coverImage ? (<img src={localConfig.coverImage} className="w-full h-full object-cover" />) : (<div className="flex items-center justify-center w-full h-full text-gray-400"><PictureIcon /></div>)}
-                                    <label className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white cursor-pointer transition-opacity"><Upload size={20} /><input type="file" className="hidden" accept="image/*" onChange={handleBannerChange} disabled={isUploadingBanner} /></label>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="block text-xs font-bold text-gray-500 uppercase">Imagen de Portada</label>
+                                {isUploadingBanner && <span className="text-[#4f46e5] text-xs flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Subiendo...</span>}
+                            </div>
+                            
+                            <div className="relative w-full aspect-video bg-gray-100 rounded-lg overflow-hidden border border-gray-200 group shadow-sm mb-2">
+                                {localConfig.coverImage ? (
+                                    <img 
+                                        src={localConfig.coverImage} 
+                                        className="w-full h-full object-cover transition-all duration-200" 
+                                        style={{ 
+                                            objectPosition: `50% ${localConfig.theme?.coverImagePositionDesktopY ?? 50}%`,
+                                            filter: `blur(${localConfig.theme?.coverBlur || 0}px)` 
+                                        }}
+                                    />
+                                ) : (
+                                    <div className="flex items-center justify-center w-full h-full text-gray-400">
+                                        <PictureIcon size={48} />
+                                    </div>
+                                )}
+                                
+                                <label className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white cursor-pointer transition-opacity duration-200">
+                                    <Upload size={32} className="mb-2" />
+                                    <span className="text-sm font-bold">Cambiar Imagen</span>
+                                    <span className="text-xs opacity-80 mt-1">Recomendado: 1920x1080</span>
+                                    <input type="file" className="hidden" accept="image/*" onChange={handleBannerChange} disabled={isUploadingBanner} />
+                                </label>
+                                
+                                <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md text-white text-[10px] px-2 py-1 rounded pointer-events-none">
+                                    Vista Escritorio ({localConfig.theme?.coverImagePositionDesktopY ?? 50}%)
                                 </div>
-                                <div className="text-xs text-gray-500 flex-1"><p>Sube una imagen horizontal de alta calidad (1920x1080 recomendado).</p>{isUploadingBanner && <span className="text-[#4f46e5] flex items-center gap-1 mt-1"><Loader2 size={10} className="animate-spin" /> Subiendo...</span>}</div>
                             </div>
                         </div>
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
                              <ColorPicker label="Color Superposición (Overlay)" value={localConfig.theme?.coverOverlayColor} onChange={(v) => updateLocalTheme('coverOverlayColor', v)} fallback="#000000" />
+                             
                              <div>
                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex justify-between"><span>Opacidad Overlay</span><span>{Math.round((localConfig.theme?.coverOverlayOpacity ?? 0.4) * 100)}%</span></label>
                                  <input type="range" min="0" max="1" step="0.1" value={localConfig.theme?.coverOverlayOpacity ?? 0.4} onChange={(e) => updateLocalTheme('coverOverlayOpacity', parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#4f46e5]" />
                              </div>
+                             
                              <div>
                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex justify-between"><span>Desenfoque (Blur)</span><span>{localConfig.theme?.coverBlur ?? 0}px</span></label>
                                  <input type="range" min="0" max="20" step="1" value={localConfig.theme?.coverBlur ?? 0} onChange={(e) => updateLocalTheme('coverBlur', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#4f46e5]" />
                              </div>
+
+                             {/* Mobile Position Slider */}
                              <div>
-                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex justify-between"><span>Posición Vertical (Foco)</span><span>{localConfig.theme?.coverImagePositionY ?? 50}%</span></label>
-                                 <input type="range" min="0" max="100" step="1" value={localConfig.theme?.coverImagePositionY ?? 50} onChange={(e) => updateLocalTheme('coverImagePositionY', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#4f46e5]" />
+                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex justify-between">
+                                    <span className="flex items-center gap-1"><Smartphone size={12}/> Posición Vertical (Móvil)</span>
+                                    <span>{localConfig.theme?.coverImagePositionY ?? 50}%</span>
+                                 </label>
+                                 <input 
+                                    type="range" 
+                                    min="0" 
+                                    max="100" 
+                                    step="1" 
+                                    value={localConfig.theme?.coverImagePositionY ?? 50} 
+                                    onChange={(e) => updateLocalTheme('coverImagePositionY', parseInt(e.target.value))} 
+                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#4f46e5]" 
+                                 />
+                             </div>
+
+                             {/* Desktop Position Slider */}
+                             <div>
+                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex justify-between">
+                                    <span className="flex items-center gap-1"><Monitor size={12}/> Posición Vertical (Escritorio)</span>
+                                    <span>{localConfig.theme?.coverImagePositionDesktopY ?? (localConfig.theme?.coverImagePositionY ?? 50)}%</span>
+                                 </label>
+                                 <input 
+                                    type="range" 
+                                    min="0" 
+                                    max="100" 
+                                    step="1" 
+                                    value={localConfig.theme?.coverImagePositionDesktopY ?? (localConfig.theme?.coverImagePositionY ?? 50)} 
+                                    onChange={(e) => updateLocalTheme('coverImagePositionDesktopY', parseInt(e.target.value))} 
+                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#4f46e5]" 
+                                 />
                              </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-gray-100">
@@ -1209,8 +1273,11 @@ const handleConfirmCleanup = async () => {
             </div>
           )}
           
+          {/* ... (REST OF TABS) ... */}
+          {/* ... keeping the rest of the file exactly as it was ... */}
           {activeTab === 'categories' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                 {/* ... Content ... */}
                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
                     <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
                         <Plus className="text-[#4f46e5]" /> Añadir Categoría
@@ -1353,6 +1420,7 @@ const handleConfirmCleanup = async () => {
 
           {activeTab === 'participants' && (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                 {/* ... Content ... */}
                  <div className="lg:col-span-4 space-y-6">
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                         <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2 border-b pb-4">
@@ -1449,7 +1517,8 @@ const handleConfirmCleanup = async () => {
               </div>
           )}
           
-          {/* ... [GALLERY, REPORTS content remains the same] ... */}
+          {/* ... (GALLERY, REPORTS, MODALS - No changes needed) ... */}
+          {/* ... keeping the rest of the file exactly as it was ... */}
           {activeTab === 'gallery' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[calc(100vh-150px)]">
                 {/* ... Gallery header and body ... */}
@@ -1615,8 +1684,7 @@ const handleConfirmCleanup = async () => {
       </main>
 
       {/* MODALS */}
-      
-      {/* ... [Other modals remain unchanged] ... */}
+      {/* ... keeping the modals as they were ... */}
       {showDeleteEventConfirm && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowDeleteEventConfirm(false)} />
@@ -1631,7 +1699,6 @@ const handleConfirmCleanup = async () => {
           </div>
       )}
 
-      {/* ... [Bulk Delete, Preview, Reprocess, Cleanup Modals remain same] ... */}
       {showBulkDeleteConfirm && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowBulkDeleteConfirm(false)} />
