@@ -566,23 +566,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
   
-  const handleDownloadQR = async () => {
-      const img = document.getElementById("qr-code-img") as HTMLImageElement;
-      if (!img) return;
-      try {
-          const response = await fetch(img.src);
-          const blob = await response.blob();
-          const url = URL.createObjectURL(blob);
-          const downloadLink = document.createElement("a");
-          downloadLink.download = `QR_${(localConfig.title || 'Evento').replace(/\s+/g, '_')}_Impresion.png`;
-          downloadLink.href = url;
-          downloadLink.click();
-          URL.revokeObjectURL(url);
-      } catch (e) {
-          console.error("Error downloading QR", e);
-          alert("No se pudo descargar el QR automáticamente. Puedes guardar la imagen con clic derecho.");
-      }
-  };
+const handleDownloadQR = async () => {
+  try {
+    const data = encodeURIComponent(finalLink);
+
+    // MISMO QR, pero en alta resolución para impresión
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&qzone=1&data=${data}`;
+
+    const response = await fetch(qrUrl);
+    const blob = await response.blob();
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+
+    a.href = url;
+    a.download = `QR_${(localConfig.title || 'Evento').replace(/\s+/g, '_')}_1000x1000.png`;
+
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Error descargando QR:', error);
+    alert('No se pudo descargar el QR en alta resolución.');
+  }
+};
+
 
   const handleAddCategory = () => {
     if (newCategoryName.trim()) {
@@ -1594,6 +1604,21 @@ const handleConfirmCleanup = async () => {
                                             borderColor: 'rgba(0,0,0,0.05)'
                                         }}
                                     >
+                                    {/* BOTÓN SELECCIÓN */}
+<button
+  onClick={(e) => {
+    e.stopPropagation();
+    toggleSelection(photo.id);
+  }}
+  className="absolute top-2 left-2 z-30 bg-white/90 backdrop-blur rounded-md p-1 shadow hover:scale-105 transition"
+>
+  {selectedIds.includes(photo.id) ? (
+    <CheckSquare size={16} className="text-indigo-600" />
+  ) : (
+    <Square size={16} className="text-gray-400" />
+  )}
+</button>
+
                                         <div className="p-2 flex items-center justify-between">
                                             <div className="flex items-center gap-2">
                                                 <div className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: author.avatarColor, color: '#fff' }}>
