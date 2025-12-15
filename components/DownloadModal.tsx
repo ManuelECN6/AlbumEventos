@@ -1,9 +1,41 @@
 
 import React, { useState } from 'react';
-import { Download, Shield, Key, Lock, ArrowLeft, Clipboard, CheckCircle, Loader2, AlertCircle, Video, Image as ImageIcon, FileText, Package, CheckSquare } from 'lucide-react';
+import { Download, Shield, Key, Lock, ArrowLeft, Clipboard, CheckCircle, Loader2, AlertCircle, Video, FileText, Package, CheckSquare } from 'lucide-react';
 import { EventConfig } from '../types';
 import JSZip from 'jszip';
-import saveAs from 'file-saver';
+
+// --- REMOVED EXTERNAL DEPENDENCY file-saver TO PREVENT IMPORT ERRORS ---
+const saveAs = (blob: Blob, name: string) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+// --- RENOMBRADO A PictureIcon ---
+const PictureIcon = ({ size = 24, className = "" }: { size?: number | string, className?: string }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+    <circle cx="9" cy="9" r="2" />
+    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+  </svg>
+);
 
 interface DownloadModalProps {
   isOpen: boolean;

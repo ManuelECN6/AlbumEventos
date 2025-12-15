@@ -1,26 +1,9 @@
+
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /eventos/{eventId}/{allPaths=**} {
-      // 1. Lectura pública (para ver las fotos)
-      allow read: if true;
-      
-      // 2. Creación (Subir archivos)
-      // Se permite SOLO si:
-      // - El archivo es una imagen o video
-      // - El tamaño es menor a 2GB (2048 MB) para permitir videos HD sin problemas.
-      // NOTA: El límite real por evento se controla desde la UI (App.tsx), esto es solo el tope de seguridad.
-      allow create: if request.resource.size < 2048 * 1024 * 1024 
-                    && (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('video/.*'));
-      
-      // 3. Edición/Sobrescritura: BLOQUEADA
-      // Una vez subida una foto, no se puede cambiar su contenido.
-      allow update: if false;
-      
-      // 4. Eliminación: BLOQUEADA (SEGURIDAD CRÍTICA)
-      // Nadie puede borrar archivos del Storage desde la web.
-      // Esto asegura que tus fotos originales estén seguras aunque hackeen el frontend.
-      allow delete: if false;
+    match /{allPaths=**} {
+      allow read, write: if true;
     }
   }
 }

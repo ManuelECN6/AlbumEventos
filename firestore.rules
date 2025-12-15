@@ -2,53 +2,70 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- FUNCIONES DE SEGURIDAD Y VALIDACIÓN ---
+    /* ================================
+       FUNCIONES DE AYUDA
+    =================================*/
 
-    // Verifica que lo que se intenta guardar como Foto tenga la estructura correcta
-    function isValidPhoto() {
-      // Una foto debe tener URL, autor y fecha. Si intentan subir otra cosa, se bloquea.
-      return request.resource.data.url is string &&
-             (request.resource.data.author.name is string || request.resource.data.author is map) &&
-             request.resource.data.createdAt is string;
+    // Admin real: usuario autenticado en Firebase Auth
+    function isAdmin() {
+      return request.auth != null;
     }
 
-    // Verifica que lo que se intenta guardar como Evento tenga datos mínimos
-    function isValidEvent() {
-      // Un evento debe tener al menos un título.
-      return request.resource.data.title is string;
+    // Validación de media (foto o video) subida por invitados
+    function isValidMedia() {
+      return request.resource.data.url is string
+          && request.resource.data.createdAt is string
+          && request.resource.data.type in ['photo', 'video'];
     }
 
-    // --- REGLAS PRINCIPALES ---
+    /* ================================
+       COLECCIÓN DE EVENTOS
+    =================================*/
 
     match /events/{eventId} {
-      // 1. LECTURA: Pública
-      // Necesario para que el QR funcione y los invitados vean el álbum.
-      allow read: if true;
-      
-      // 2. ESCRITURA (Crear/Editar): Validada
-      // Antes era 'if true'. Ahora exigimos que sea un evento válido.
-      allow create, update: if isValidEvent();
-      
-      // 3. BORRADO: PROHIBIDO (CANDADO DE SEGURIDAD)
-      // Nadie puede borrar un evento entero desde la página web.
-      // Esto protege tu base de datos de borrados malintencionados o accidentales.
-      allow delete: if false;
 
-      // --- SUBCOLECCIÓN DE FOTOS ---
+      // 📖 Lectura pública (invitados pueden ver el álbum)
+      allow read: if true;
+
+      // ➕➖ Crear y borrar eventos → SOLO ADMIN
+      allow create, delete: if isAdmin();
+
+      // ✏️ Actualizar evento
+      // - Admin: todo
+      // - Invitados: solo campos operativos (NO configuración)
+      allow update: if isAdmin() ||
+        request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'participants',
+            'totalUsageBytes'
+          ]);
+
+      /* ================================
+         SUBCOLECCIÓN DE FOTOS / VIDEOS
+      =================================*/
+
       match /photos/{photoId} {
-        // Lectura pública para la galería
+
+        // 👀 Lectura pública
         allow read: if true;
-        
-        // Creación: Solo si es una foto válida (URL, Fecha, Autor)
-        allow create: if isValidPhoto();
-        
-        // Edición: Permitida (necesario para dar Likes o marcar como borrada/soft-delete)
-        allow update: if true;
-        
-        // BORRADO FÍSICO: PROHIBIDO
-        // Aunque el usuario pulse "Eliminar", la app solo la oculta (isDeleted=true).
-        // Nadie puede eliminar el registro físico de la base de datos desde fuera.
-        allow delete: if false;
+
+        // ⬆️ Invitados pueden subir fotos y videos
+        allow create: if isValidMedia();
+
+        // ❤️ Likes / 🚩 Reportes
+        // - Invitados: solo likes y reports
+        // - Admin: todo
+        allow update: if isAdmin() ||
+          request.resource.data.diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              'likes',
+              'reports'
+            ]);
+
+        // 🗑️ Borrado físico → SOLO ADMIN
+        allow delete: if isAdmin();
       }
     }
   }

@@ -1,3 +1,4 @@
+
 {
   "hosting": {
     "public": "dist",
@@ -11,10 +12,7 @@
     "rewrites": [
       {
         "source": "**",
-        "run": {
-          "serviceId": "lbum-digital-inteligente",
-          "region": "us-west1"
-        }
+        "destination": "/index.html"
       }
     ]
   }

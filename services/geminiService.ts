@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
 const getClient = () => {
   const apiKey = process.env.API_KEY;
@@ -19,7 +19,7 @@ export const generateImageCaption = async (base64Image: string, mimeType: string
       Máximo 2 frases. Responde en Español.
     `;
 
-    const response = await client.models.generateContent({
+    const response: GenerateContentResponse = await client.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: {
         parts: [

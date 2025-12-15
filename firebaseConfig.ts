@@ -1,9 +1,8 @@
-
 import * as firebaseApp from "firebase/app";
-import { initializeFirestore } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { getAuth } from "firebase/auth";
 
-// Configuración de tu proyecto "Album"
 export const firebaseConfig = {
   apiKey: "AIzaSyAnDd_S1Nw8LUPfEQzZ2sBVmfBsf6VOUoE",
   authDomain: "album-31eb4.firebaseapp.com",
@@ -14,19 +13,11 @@ export const firebaseConfig = {
   measurementId: "G-2KK3ELW168"
 };
 
-// Inicializar Firebase de forma modular estándar
-// Fix: Use named imports via namespace to avoid 'no exported member' error in some TS environments
-// Fix: Use getApps() to prevent double initialization during hot-reload
+// Initialize Firebase
+// Cast to any to bypass potential type definition mismatches in the environment
+const app = (firebaseApp as any).initializeApp(firebaseConfig);
 
-// Workaround for missing exports in some environment type definitions
-const { initializeApp, getApps, getApp } = firebaseApp as any;
-
-const app = getApps().length === 0 
-  ? initializeApp(firebaseConfig) 
-  : getApp();
-
-// Exportar los servicios de Base de Datos y Almacenamiento
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-});
+// Firebase services
+export const db = getFirestore(app);
 export const storage = getStorage(app);
+export const auth = getAuth(app);

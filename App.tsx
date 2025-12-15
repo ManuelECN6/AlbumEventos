@@ -20,7 +20,10 @@ import {
     archivePhoto,
     batchUpdatePhotos,
     reportPhoto,
-    resolvePhotoReport
+    resolvePhotoReport,
+    subscribeToAuth, // Nueva importación
+    loginAdmin,      // Nueva importación
+    logoutAdmin      // Nueva importación
 } from './services/firebaseService';
 import { 
   Heart, 
@@ -32,7 +35,6 @@ import {
   User,
   Calendar,
   X,
-  Image as ImageIcon,
   Plus,
   Video,
   Loader2,
@@ -41,10 +43,44 @@ import {
   Check,
   CheckCircle,
   AlertTriangle,
-  ShieldAlert
+  ShieldAlert,
+  Mail
 } from 'lucide-react';
 import JSZip from 'jszip';
-import saveAs from 'file-saver';
+
+// --- REMOVED EXTERNAL DEPENDENCY file-saver TO PREVENT IMPORT ERRORS ---
+const saveAs = (blob: Blob, name: string) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+// --- ICONO LOCAL (RENOMBRADO A PictureIcon) PARA EVITAR CONFLICTOS ---
+const PictureIcon = ({ size = 24, className = "", style = {} }: { size?: number | string, className?: string, style?: React.CSSProperties }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+    style={style}
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+    <circle cx="9" cy="9" r="2" />
+    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+  </svg>
+);
 
 // --- PLANTILLA POR DEFECTO ---
 const DEFAULT_EVENT_TEMPLATE: EventConfig = {
@@ -96,7 +132,6 @@ const DEFAULT_EVENT_TEMPLATE: EventConfig = {
 };
 
 // --- COMPONENTE OPTIMIZADO PARA CARGA DIFERIDA DE MEDIA ---
-// Solo carga la imagen/video cuando entra en el viewport
 const LazyMedia = React.memo(({ src, type, alt, className }: { src: string, type?: 'photo' | 'video', alt?: string, className?: string }) => {
     const [isVisible, setIsVisible] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
@@ -109,7 +144,7 @@ const LazyMedia = React.memo(({ src, type, alt, className }: { src: string, type
                     observer.disconnect();
                 }
             },
-            { rootMargin: '200px' } // Cargar 200px antes de que aparezca
+            { rootMargin: '200px' } 
         );
 
         if (ref.current) {
@@ -131,7 +166,7 @@ const LazyMedia = React.memo(({ src, type, alt, className }: { src: string, type
                     className={`${className} object-cover`} 
                     muted 
                     playsInline
-                    preload="metadata" // CRÍTICO: Solo carga metadata, no todo el video
+                    preload="metadata" 
                 />
                 <div className="absolute inset-0 flex items-center justify-center bg-black/10">
                     <Video size={32} className="text-white drop-shadow-md opacity-80" />
@@ -146,13 +181,12 @@ const LazyMedia = React.memo(({ src, type, alt, className }: { src: string, type
             alt={alt || ''} 
             className={className} 
             loading="lazy" 
-            decoding="async" // CRÍTICO: No bloquea el hilo principal
+            decoding="async" 
         />
     );
 });
 
 // --- TARJETA DE FOTO MEMOIZADA ---
-// Previene re-renders innecesarios de toda la grilla cuando cambia un like
 const PhotoCard = React.memo(({ 
     photo, 
     theme, 
@@ -265,23 +299,30 @@ const PhotoCard = React.memo(({
 
 export default function App() {
   const [events, setEvents] = useState<EventConfig[]>([]);
-  // Nuevo estado para guardar los datos COMPLETOS del evento activo en modo admin
   const [adminActiveEventData, setAdminActiveEventData] = useState<EventConfig | null>(null);
   
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [deviceId, setDeviceId] = useState<string>('');
 
-  // OPTIMIZACIÓN: Inicializar estado directamente desde URL para evitar re-renders y dobles lecturas
-  const [isAdminMode, setIsAdminMode] = useState(() => {
-      if (typeof window !== 'undefined') {
-          const params = new URLSearchParams(window.location.search);
-          return params.get('admin') === 'true';
-      }
-      return false;
-  });
+  // --- NUEVO SISTEMA DE AUTENTICACIÓN ---
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const isAdminMode = !!currentUser; // La verdad absoluta de la seguridad
+
+  useEffect(() => {
+    // Escuchar cambios reales de Auth. Si Firebase dice que no eres admin, no eres admin.
+    const unsubscribe = subscribeToAuth((user) => {
+        setCurrentUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const [showLoginModal, setShowLoginModal] = useState(false);
+  // Estados para el form de login
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const [likedPhotoIds, setLikedPhotoIds] = useState<Set<string>>(new Set());
   
@@ -292,7 +333,6 @@ export default function App() {
   const [downloadSelection, setDownloadSelection] = useState<Set<string>>(new Set());
   const [isZippingSelected, setIsZippingSelected] = useState(false);
   
-  // NEW: Report Modal State for Grid View
   const [reportModal, setReportModal] = useState<{isOpen: boolean, photoId: string | null, status: 'confirm' | 'success'}>({
       isOpen: false, photoId: null, status: 'confirm'
   });
@@ -311,11 +351,8 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const urlEventToken = params.get('event');
 
-      // LÓGICA CRÍTICA DE COSTOS:
-      // Si es Admin -> Carga toda la lista (subscribeToEvents) PERO ligera (sin fotos)
-      // Si es Visitante -> Carga SOLO 1 evento (subscribeToVisitorEvent) completo
       if (isAdminMode) {
-          console.log("Modo Admin: Cargando lista de eventos...");
+          console.log("Modo Admin Autenticado: Cargando lista...");
           unsubscribe = subscribeToEvents((fetchedEvents) => {
               setEvents(fetchedEvents);
               setIsLoading(false);
@@ -335,15 +372,10 @@ export default function App() {
 
   const [currentEventId, setCurrentEventId] = useState<string | null>(null);
 
-  // --- NUEVA LÓGICA: Suscripción a detalle en Modo Admin ---
-  // Cuando el admin selecciona un evento, nos suscribimos a su versión COMPLETA (con subcolección de fotos)
-  // para poder ver las fotos nuevas en la galería del admin.
   useEffect(() => {
       if (isAdminMode && currentEventId) {
-          console.log(`Modo Admin: Suscribiendo a detalles del evento ${currentEventId}...`);
           const unsubscribeDetail = subscribeToVisitorEvent(currentEventId, (fetchedEvents) => {
               if (fetchedEvents && fetchedEvents.length > 0) {
-                  // Actualizamos el estado separado para datos detallados
                   setAdminActiveEventData(fetchedEvents[0]);
               }
           });
@@ -359,14 +391,7 @@ export default function App() {
     
     if (!isLoading) {
         if (events.length > 0) {
-            
-            // --- FIX: NAVEGACIÓN ADMIN PANEL ---
-            // Si estamos en modo admin y ya tenemos un evento seleccionado, 
-            // NO permitimos que el token de la URL (si existe) lo sobrescriba.
-            // Esto permite cambiar de álbum en el sidebar sin que la app te devuelva al del link original.
             if (isAdminMode && currentEventId) {
-                 // Verificamos que el evento seleccionado siga existiendo en la lista actual
-                 // (por si acaso se borró mientras navegábamos)
                  const stillExists = events.some(e => e.id === currentEventId);
                  if (stillExists) {
                      return; 
@@ -375,22 +400,17 @@ export default function App() {
             
             if (token) {
                 const foundEvent = events.find(e => e.publicToken === token || e.id === token);
-                // Si encontramos el evento del token, lo ponemos. 
-                // Si NO lo encontramos (ej: en admin mode carga lista parcial o token invalido), 
-                // entonces fallback al primero o al que ya estaba.
                 if (foundEvent) {
                      setCurrentEventId(foundEvent.id);
                 } else if (!currentEventId) {
-                     // Solo fallback al primero si no hay nada seleccionado
                      setCurrentEventId(events[0].id);
                 }
             } else if (!currentEventId) {
                 setCurrentEventId(events[0].id);
             }
         } else {
-            // SOLO CREAMOS SI NO HAY EVENTOS Y SOMOS ADMIN. SI SOMOS GUEST, MOSTRAMOS EMPTY STATE.
             if (isAdminMode && events.length === 0) {
-                 handleCreateEvent();
+                 // No auto create
             }
         }
     }
@@ -414,18 +434,13 @@ export default function App() {
       setDownloadSelection(new Set());
   }, [currentEventId]);
 
-  // CALCULO DEL EVENTO ACTIVO:
-  // Si estamos en admin y tenemos datos detallados (con fotos nuevas), usamos eso.
-  // Si no, usamos la lista general.
   const activeEvent = useMemo(() => {
     if (isAdminMode && adminActiveEventData && adminActiveEventData.id === currentEventId) {
         return adminActiveEventData;
     }
-    // PROTECCIÓN: Si events está vacío, retorna el template para que la UI no rompa
     return events.find(e => e.id === currentEventId) || events[0] || DEFAULT_EVENT_TEMPLATE;
   }, [events, currentEventId, isAdminMode, adminActiveEventData]);
 
-  // SYNC PARTICIPANTS LOGIC
   useEffect(() => {
       if (!activeEvent || !activeEvent.id) return;
 
@@ -436,16 +451,13 @@ export default function App() {
       let hasChanges = false;
       const updatedParticipants = [...currentParticipants];
       
-      // Safety check for photos array
       const safePhotos = activeEvent.photos || [];
       const activePhotos = safePhotos.filter(p => !p.isDeleted);
 
       activePhotos.forEach(photo => {
-          // --- PROTECCIÓN CONTRA FOTOS CORRUPTAS ---
           if (!photo || !photo.author) return;
 
           const deviceId = photo.deviceId;
-          // Validación segura de autor
           const authorName = photo.author?.name || 'Anónimo';
           const legacyId = `legacy-${authorName.replace(/\s+/g, '-').toLowerCase()}`;
           const targetId = deviceId || legacyId;
@@ -467,10 +479,9 @@ export default function App() {
       });
 
       if (hasChanges) {
-          // Usamos la nueva función de solo actualizar campos para no pisar fotos
           updateEventFieldInFirebase(activeEvent.id, 'participants', updatedParticipants);
       }
-  }, [activeEvent.photos, activeEvent.id]); // Eliminada dependencia cíclica profunda
+  }, [activeEvent.photos, activeEvent.id]);
 
   const photos = useMemo(() => {
       const rawPhotos = activeEvent?.photos || [];
@@ -494,16 +505,10 @@ export default function App() {
     (activeEvent.participants || []).filter(p => p.status === 'confirmed'), 
   [activeEvent.participants]);
 
-  // NUEVA LÓGICA DE VISUALIZACIÓN DE CUPO
   const remainingSpotsDisplay = useMemo(() => {
       const limit = activeEvent.participantsCount || 0;
       const current = activeParticipants.length;
-      
-      // Si el límite es 0, mostramos solo el número actual (sin texto "Ilimitado")
-      if (limit === 0) {
-          return `${current}`;
-      }
-      // Si hay límite, mostramos formato X/Y
+      if (limit === 0) return `${current}`;
       return `${current}/${limit}`;
   }, [activeEvent.participantsCount, activeParticipants]);
 
@@ -511,8 +516,6 @@ export default function App() {
   const [columns, setColumns] = useState<1 | 2>(2);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
-  const [loginError, setLoginError] = useState(false);
 
   const clickCountRef = useRef(0);
   const lastClickTimeRef = useRef(0);
@@ -546,18 +549,31 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleCreateEvent = async () => {
-    const id = `event-${Date.now()}`;
-    const newEvent: EventConfig = {
-      ...DEFAULT_EVENT_TEMPLATE,
-      id,
-      publicToken: `evento-${Date.now().toString(36)}`,
-      downloadPassword: Math.random().toString(36).slice(-6),
-      photos: [], 
-      participants: []
-    };
-    await saveEventToFirebase(newEvent);
-    setCurrentEventId(id);
+  // UPDATED: Now accepts title argument directly
+  const handleCreateEvent = async (title: string) => {
+    try {
+        const slug = title.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+        const timestamp = Date.now();
+        // ID descriptivo: event-FECHA-NOMBRE
+        const id = `event-${timestamp}-${slug.substring(0, 30)}`;
+
+        const newEvent: EventConfig = {
+          ...DEFAULT_EVENT_TEMPLATE,
+          id,
+          title: title, // Use passed title
+          publicToken: `evento-${timestamp.toString(36)}`,
+          downloadPassword: Math.random().toString(36).slice(-6),
+          photos: [], 
+          participants: []
+        };
+        
+        await saveEventToFirebase(newEvent);
+        setCurrentEventId(id);
+    } catch (error: any) {
+        console.error("Error creating event:", error);
+        alert("Error al crear el evento: " + (error.message || "Desconocido"));
+        throw error; // Re-throw to allow caller to handle UI state
+    }
   };
 
   const handleUpdateEvent = async (updatedEvent: EventConfig) => {
@@ -599,25 +615,60 @@ export default function App() {
   };
 
   const handlePhotoUpload = async (files: File[], authorName: string) => {
-    const authorColor = activeEvent.theme?.primaryColor || '#a87b51';
+  const authorColor = activeEvent.theme?.primaryColor || '#a87b51';
 
-    // No actualizamos el estado local manualmente. Confiamos en la suscripción de Firestore.
-    // Solo subimos los archivos y la base de datos disparará el update.
-    for (const file of files) {
-        try {
-            await processAndUploadPhoto(
-                file, 
-                activeEvent.id, 
-                authorName, 
-                authorColor,
-                deviceId 
-            );
-        } catch (error) {
-            console.error("Error subiendo archivo:", file.name, error);
-        }
+  for (const file of files) {
+    const tempId = `temp-${Date.now()}-${Math.random()}`;
+
+    // 🔥 1. FOTO TEMPORAL (APARECE AL INSTANTE)
+    const tempPhoto: Photo = {
+      id: tempId,
+      url: URL.createObjectURL(file),
+      thumbnail: URL.createObjectURL(file),
+      title: file.name,
+      category: 'General',
+      likes: 0,
+      reports: 0,
+      likedByMe: false,
+      isArchived: false,
+      isDeleted: false,
+      createdAt: new Date().toISOString(),
+      author: {
+        name: authorName,
+        initials: authorName.substring(0, 2).toUpperCase(),
+        avatarColor: authorColor
+      },
+      type: (file.type.startsWith('video') ? 'video' : 'photo') as 'photo' | 'video',
+      deviceId,
+      size: file.size,
+      width: 0,
+      height: 0
+    };
+
+    // 👉 LA METEMOS AL ESTADO YA
+    setEvents(prev =>
+      prev.map(e =>
+        e.id === activeEvent.id
+          ? { ...e, photos: [tempPhoto, ...e.photos] }
+          : e
+      )
+    );
+
+    // 🔥 2. SUBIDA REAL
+    try {
+      await processAndUploadPhoto(
+        file,
+        activeEvent.id,
+        authorName,
+        authorColor,
+        deviceId
+      );
+    } catch (err) {
+      console.error("Error subiendo archivo", err);
     }
-    // La actualización de participantes se manejará en el useEffect de sincronización
-  };
+  }
+};
+
 
   const handleDriveImport = async (files: File[]) => {
     setIsProcessing(true);
@@ -641,7 +692,6 @@ export default function App() {
     }
   };
 
-  // CALLBACKS MEMOIZADOS PARA OPTIMIZAR GRID
   const handleLike = useCallback(async (photoId: string) => {
       if (!activeEvent?.id) return;
       
@@ -653,19 +703,10 @@ export default function App() {
           } else {
               newLikedIds.add(photoId);
           }
-          // Guardar en local
           localStorage.setItem(`album_likes_${activeEvent.id}`, JSON.stringify(Array.from(newLikedIds)));
           return newLikedIds;
       });
 
-      // Llamada atómica optimizada
-      // Nota: Leemos el estado anterior para saber si estaba liked, 
-      // pero como estamos en un callback, lo ideal es que este componente sepa el estado
-      // actual. Sin embargo, para la UI rápida, esto funciona.
-      // Corrección: togglePhotoLike necesita saber si incrementamos o no.
-      // Como no tenemos el estado 'isLiked' dentro de este callback de forma síncrona exacta,
-      // confiamos en que el componente hijo ya sabe su estado o pasamos la lógica.
-      // Simplemente invertimos lo que tenemos en el Set actual
       setLikedPhotoIds(current => {
           const isLiked = current.has(photoId);
           togglePhotoLike(activeEvent.id, photoId, !isLiked);
@@ -690,12 +731,8 @@ export default function App() {
 
   const confirmReportFromModal = async () => {
       if (!reportModal.photoId) return;
-      
-      // Optimistic update
       setReportModal(prev => ({ ...prev, status: 'success' }));
-      
       await handleReport(reportModal.photoId);
-      
       setTimeout(() => {
           setReportModal({ isOpen: false, photoId: null, status: 'confirm' });
       }, 2000);
@@ -725,14 +762,14 @@ export default function App() {
     if (!currentEventId || photoIdsToRemove.length === 0) return;
     setIsProcessing(true);
     try {
-      const latestEvent = activeEvent; // Usamos el estado actual que está sincronizado
+      const latestEvent = activeEvent;
       const idsSet = new Set(photoIdsToRemove);
       const photosToDelete = latestEvent.photos.filter(p => idsSet.has(p.id));
 
       const CHUNK_SIZE = 3; 
       for (let i = 0; i < photosToDelete.length; i += CHUNK_SIZE) {
           const chunk = photosToDelete.slice(i, i + CHUNK_SIZE);
-          await Promise.allSettled(chunk.map(p => permanentDeletePhoto(currentEventId, p.id, p.url)));
+          await Promise.allSettled(chunk.map(p => permanentDeletePhoto(currentEventId, p.id, p.url, p.thumbnail)));
       }
       alert(`Eliminados ${photoIdsToRemove.length} elementos permanentemente.`);
     } catch (error: any) {
@@ -831,17 +868,14 @@ export default function App() {
       }
   };
 
-  // --- SAFE THEME MERGING ---
   const theme = useMemo(() => {
       const defaults = DEFAULT_EVENT_TEMPLATE.theme!;
-      // Si no hay evento activo o no tiene tema, usamos el default
       if (!activeEvent || !activeEvent.theme) return defaults;
       return { ...defaults, ...activeEvent.theme };
   }, [activeEvent]);
 
   const fontClass = theme.fontFamily === 'serif' ? 'font-serif' : 'font-sans';
   
-  // --- SAFE HEX TO RGBA ---
   const hexToRgba = (hex: any, alpha: number) => {
     try {
         if (!hex || typeof hex !== 'string') return 'transparent';
@@ -858,6 +892,36 @@ export default function App() {
         return 'transparent';
     }
   };
+
+  // --- LÓGICA DE LOGIN ---
+  const handleLogin = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setLoginError('');
+      setIsLoggingIn(true);
+      
+      try {
+          await loginAdmin(loginEmail, loginPass);
+          // Si el login es exitoso, el listener onAuthStateChanged cerrará el modal
+          setShowLoginModal(false);
+          // Reseteamos campos
+          setLoginEmail('');
+          setLoginPass('');
+      } catch (error: any) {
+          console.error("Login fallido", error);
+          if (error.code === 'auth/invalid-credential') {
+              setLoginError("Credenciales incorrectas.");
+          } else if (error.code === 'auth/too-many-requests') {
+              setLoginError("Demasiados intentos. Espera un momento.");
+          } else {
+              setLoginError("Error de autenticación: " + error.message);
+          }
+      } finally {
+          setIsLoggingIn(false);
+      }
+  };
+
+  // DEFAULT COVER: Usar una imagen genérica si el usuario no ha subido ninguna
+  const currentCoverImage = activeEvent.coverImage || 'https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=2070&auto=format&fit=crop';
 
   if (isLoading) {
       return (
@@ -879,12 +943,12 @@ export default function App() {
             isProcessing={isProcessing}
             onUpdateEvent={handleUpdateEvent}
             onUpdateField={handleUpdateEventField}
-            onCreateEvent={handleCreateEvent}
+            onCreateEvent={handleCreateEvent} // NEW: Pass the updated function
             onSelectEvent={setCurrentEventId}
             onDeleteEvent={handleDeleteEvent}
             onDeletePhoto={handleDeletePhoto}
             onRestorePhoto={handleRestorePhoto}
-            onPermanentDelete={(id) => handlePermanentPhotoRemoval([id])}
+            onPermanentDelete={(photo) => handlePermanentPhotoRemoval([photo.id])}
             onArchivePhoto={handleArchivePhoto}
             onBulkDelete={handleBulkDelete}
             onBulkArchive={handleBulkArchive}
@@ -892,18 +956,18 @@ export default function App() {
             onBulkPermanentDelete={handlePermanentPhotoRemoval}
             onDriveImport={handleDriveImport}
             onResolveReport={handleResolveReport}
-            onExit={() => {
-                setIsAdminMode(false);
-                setIsLoading(true); // Force reload when exiting to visitor
+            onExit={async () => {
+                await logoutAdmin();
+                setIsLoading(true);
             }} 
         />
       </ErrorBoundary>
     );
   }
   
-  // --- PANTALLA SEGURA PARA BASE DE DATOS VACÍA ---
-  // Si no hay evento activo (ID vacío) y no somos admin, mostramos esto para evitar crash
+  // ... rest of the component
   if (!activeEvent || !activeEvent.id) {
+      // ... (code for Album No Encontrado screen)
       return (
           <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6 text-center">
               <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mb-6 text-gray-400">
@@ -914,13 +978,62 @@ export default function App() {
                   No se pudo encontrar el evento solicitado. Es posible que haya sido eliminado o el enlace sea incorrecto.
               </p>
               
-              {/* Botón "Secret" para ir a Admin si el usuario es dueño */}
               <button 
-                  onClick={() => setIsAdminMode(true)}
+                  onClick={() => setShowLoginModal(true)}
                   className="text-sm text-blue-600 hover:underline font-medium"
               >
                   Soy el administrador
               </button>
+
+              {/* REUTILIZACIÓN DEL MODAL LOGIN PARA ESTA PANTALLA */}
+              {showLoginModal && (
+                  <section className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowLoginModal(false)} />
+                      <div className="relative z-10 w-full max-w-sm p-8 bg-white shadow-2xl rounded-2xl animate-fade-in-up">
+                          <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                          <header className="mb-6 text-center">
+                              <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 text-gray-600 bg-gray-100 rounded-full"><Lock size={32} /></div>
+                              <h2 className="text-2xl font-bold text-gray-800">Acceso Seguro</h2>
+                          </header>
+                          <form onSubmit={handleLogin} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                    <input 
+                                        type="email" 
+                                        value={loginEmail}
+                                        onChange={(e) => setLoginEmail(e.target.value)}
+                                        placeholder="admin@album.pro"
+                                        className="w-full pl-10 pr-4 py-3 border rounded-lg outline-none focus:ring-2 bg-gray-50 border-gray-300"
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+                                <div className="relative">
+                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                    <input 
+                                        type="password" 
+                                        value={loginPass}
+                                        onChange={(e) => setLoginPass(e.target.value)}
+                                        placeholder="••••••••"
+                                        className="w-full pl-10 pr-4 py-3 border rounded-lg outline-none focus:ring-2 bg-gray-50 border-gray-300"
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            
+                            {loginError && <p className="text-sm text-red-500 font-medium text-center">{loginError}</p>}
+
+                            <button type="submit" disabled={isLoggingIn} className="w-full py-3 font-bold text-white bg-gray-900 rounded-lg hover:bg-black transition-colors disabled:opacity-50">
+                                {isLoggingIn ? 'Verificando...' : 'Iniciar Sesión'}
+                            </button>
+                        </form>
+                      </div>
+                  </section>
+              )}
           </div>
       );
   }
@@ -945,7 +1058,7 @@ export default function App() {
             }
         `}</style>
         
-        {/* REPORT MODAL FOR GRID VIEW - FIXED Z-INDEX AND VISIBILITY */}
+        {/* REPORT MODAL */}
         {reportModal.isOpen && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setReportModal({ ...reportModal, isOpen: false })} />
@@ -987,6 +1100,7 @@ export default function App() {
             </div>
         )}
 
+        {/* LOGIN MODAL - REIMPLEMENTADO CON AUTH */}
         {showLoginModal && (
             <section className="fixed inset-0 z-50 flex items-center justify-center p-4 MV-modal-acceso">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowLoginModal(false)} />
@@ -994,39 +1108,49 @@ export default function App() {
                 <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X size={20} /></button>
                 <header className="mb-6 text-center">
                 <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 text-gray-600 bg-gray-100 rounded-full"><Lock size={32} /></div>
-                <h2 className="text-2xl font-bold text-gray-800">Acceso Admin</h2>
+                <h2 className="text-2xl font-bold text-gray-800">Acceso Seguro</h2>
                 </header>
-                <form onSubmit={(e) => { 
-                    e.preventDefault(); 
-                    if(passwordInput === 'admin') { 
-                        // FIX: Force loading state to reset UI while fetching admin data
-                        setIsLoading(true);
-                        // FIX: Remove history manipulation that crashes in iframes/previews
-                        setIsAdminMode(true); 
-                        setShowLoginModal(false); 
-                        
-                        // FIX: Limpiar la URL para evitar que el 'event' parameter bloquee la navegación
-                        const newUrl = new URL(window.location.href);
-                        newUrl.searchParams.delete('event');
-                        newUrl.searchParams.set('admin', 'true');
-                        window.history.pushState({}, '', newUrl.toString());
-                    } else { 
-                        setLoginError(true); 
-                    }
-                }}>
-                <input 
-                    type="password" 
-                    value={passwordInput}
-                    onChange={(e) => { setPasswordInput(e.target.value); setLoginError(false); }}
-                    placeholder="Contraseña (admin)"
-                    className={`w-full px-4 py-3 mb-4 text-center border rounded-lg outline-none focus:ring-2 ${loginError ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-300'}`}
-                />
-                <button type="submit" className="w-full py-3 font-bold text-white bg-gray-900 rounded-lg">Entrar</button>
+                <form onSubmit={handleLogin} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <div className="relative">
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            <input 
+                                type="email" 
+                                value={loginEmail}
+                                onChange={(e) => setLoginEmail(e.target.value)}
+                                placeholder="admin@album.pro"
+                                className="w-full pl-10 pr-4 py-3 border rounded-lg outline-none focus:ring-2 bg-gray-50 border-gray-300"
+                                required
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+                        <div className="relative">
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            <input 
+                                type="password" 
+                                value={loginPass}
+                                onChange={(e) => setLoginPass(e.target.value)}
+                                placeholder="••••••••"
+                                className="w-full pl-10 pr-4 py-3 border rounded-lg outline-none focus:ring-2 bg-gray-50 border-gray-300"
+                                required
+                            />
+                        </div>
+                    </div>
+                    
+                    {loginError && <p className="text-sm text-red-500 font-medium text-center">{loginError}</p>}
+
+                    <button type="submit" disabled={isLoggingIn} className="w-full py-3 font-bold text-white bg-gray-900 rounded-lg hover:bg-black transition-colors disabled:opacity-50">
+                        {isLoggingIn ? 'Verificando...' : 'Iniciar Sesión'}
+                    </button>
                 </form>
             </div>
             </section>
         )}
 
+        {/* ... [Resto del JSX se mantiene igual] ... */}
         {isDownloadSelectionMode && (
             <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-white border-t border-gray-200 shadow-xl MV-barra-seleccion animate-slide-up">
                 <div className="flex items-center justify-between max-w-4xl mx-auto">
@@ -1054,26 +1178,24 @@ export default function App() {
         )}
 
         <section className="relative mb-8 overflow-hidden group MV-seccion-portada">
-            {activeEvent.coverImage && (
-                <figure className="absolute inset-0 z-0 w-full h-full overflow-hidden MV-contenedor-imagen">
-                    <img 
-                        src={activeEvent.coverImage} 
-                        className="w-full h-full transition-all duration-500 object-cover custom-cover-position" 
-                        alt="Cover" 
-                        style={{ 
-                            filter: `blur(${theme.coverBlur || 0}px)` 
-                        }}
-                        onContextMenu={(e) => e.preventDefault()}
-                    />
-                </figure>
-            )}
+            <figure className="absolute inset-0 z-0 w-full h-full overflow-hidden MV-contenedor-imagen">
+                <img 
+                    src={currentCoverImage} 
+                    className="w-full h-full transition-all duration-500 object-cover custom-cover-position" 
+                    alt="Cover" 
+                    style={{ 
+                        filter: `blur(${theme.coverBlur || 0}px)` 
+                    }}
+                    onContextMenu={(e) => e.preventDefault()}
+                />
+            </figure>
             
             <div 
                 className="absolute inset-0 z-0 transition-colors duration-500" 
                 style={{ backgroundColor: hexToRgba(theme.coverOverlayColor || '#000000', theme.coverOverlayOpacity ?? 0.4) }}
             />
 
-            <header className={`MV-nav-main relative z-10 max-w-6xl mx-auto animate-fade-in ${activeEvent.coverImage ? 'py-12 px-4 md:px-8' : 'pt-8 px-4 md:px-8'}`}>
+            <header className={`MV-nav-main relative z-10 max-w-6xl mx-auto animate-fade-in py-12 px-4 md:px-8`}>
                 <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center MV-nav-contenido">
                 <div className="flex items-start gap-4">
                     
@@ -1175,7 +1297,7 @@ export default function App() {
             {guestPhotos.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-24 text-center border-2 border-dashed rounded-xl" style={{ borderColor: hexToRgba(theme.textColor, 0.2) }}>
                     <div className="flex items-center justify-center w-24 h-24 mb-6 rounded-full" style={{ backgroundColor: hexToRgba(theme.primaryColor, 0.1) }}>
-                        <ImageIcon size={48} style={{ color: theme.primaryColor }} />
+                        <PictureIcon size={48} style={{ color: theme.primaryColor }} />
                     </div>
                     <h3 className="mb-3 text-2xl font-bold" style={{ color: theme.textColor }}>Aún no hay recuerdos aquí</h3>
                     <p className="max-w-md mb-8 text-lg opacity-70" style={{ color: theme.textColor }}>Sé el primero en compartir un momento especial.</p>

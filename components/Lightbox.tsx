@@ -214,10 +214,11 @@ export const Lightbox: React.FC<LightboxProps> = ({
         >
            {photo.type === 'video' ? (
               <video 
-                 src={photo.url} 
+                 src={photo.url}
                  controls 
-                 autoPlay 
-                 className="max-h-[60vh] max-w-full object-contain shadow-sm"
+                 playsInline
+                 preload="metadata" 
+                 className="max-h-[60vh] max-w-full object-contain shadow-sm bg-black"
               />
            ) : (
               <img 

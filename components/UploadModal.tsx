@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { X, Upload, User, Image as ImageIcon, Info, AlertCircle, Trash2, CheckCircle, Video, Loader2, Lock } from 'lucide-react';
+import { X, Upload, User, Info, AlertCircle, Trash2, CheckCircle, Video, Loader2, Lock } from 'lucide-react';
 import { EventConfig } from '../types';
 
 // MOVED TO TOP TO PREVENT HOISTING ERRORS
@@ -19,6 +19,26 @@ const CameraIcon = ({ className, size }: { className?: string, size?: number }) 
   >
     <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
     <circle cx="12" cy="13" r="3"/>
+  </svg>
+);
+
+// --- RENOMBRADO A PictureIcon ---
+const PictureIcon = ({ size = 24, className = "" }: { size?: number | string, className?: string }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+    <circle cx="9" cy="9" r="2" />
+    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
   </svg>
 );
 
@@ -71,7 +91,7 @@ const FilePreviewItem: React.FC<FilePreviewItemProps> = ({ file, onRemove }) => 
               <img src={previewUrl} alt={file.name} className="w-full h-full object-cover" />
            ) : (
               <div className="flex flex-col items-center justify-center text-gray-400">
-                  {isVideo ? <Video size={20} /> : <ImageIcon size={20} />}
+                  {isVideo ? <Video size={20} /> : <PictureIcon size={20} />}
               </div>
            )}
         </div>
@@ -526,7 +546,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
                          <ul className="space-y-3 text-sm text-gray-600">
                              {allowed.includes('photo') && (
                                  <li className="flex justify-between items-center bg-white p-2 rounded border border-gray-100">
-                                     <span className="flex items-center gap-2 text-xs font-medium"><ImageIcon size={14} /> Fotos</span>
+                                     <span className="flex items-center gap-2 text-xs font-medium"><PictureIcon size={14} /> Fotos</span>
                                      <div className="flex items-center gap-2">
                                          <span className={`font-bold ${totalPhotos >= event.maxPhotosPerPerson ? "text-red-500" : "text-green-600"}`}>
                                              {totalPhotos} / {event.maxPhotosPerPerson}
@@ -571,7 +591,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
                     {/* Right Column: Dropzone */}
                     <div className="md:col-span-7 flex flex-col">
                     <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                        <ImageIcon size={16} />
+                        <PictureIcon size={16} />
                         Seleccionar {acceptedStr}
                     </label>
                     
