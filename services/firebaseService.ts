@@ -19,7 +19,7 @@ import {
 import { 
   ref, 
   uploadBytes,
-  uploadBytesResumable, // Changed from uploadBytes
+  uploadBytesResumable, 
   getDownloadURL, 
   deleteObject,
   getMetadata,
@@ -173,8 +173,45 @@ export const updateEventFieldInFirebase = async (eventId: string, fieldPath: str
   }
 };
 
+// HELPER: Borrado recursivo de carpeta en Storage
+const deleteFolderRecursive = async (path: string) => {
+    const listRef = ref(storage, path);
+    try {
+        const res = await listAll(listRef);
+        // Borrar archivos
+        const filePromises = res.items.map((itemRef) => deleteObject(itemRef));
+        await Promise.all(filePromises);
+        
+        // Borrar subcarpetas
+        const folderPromises = res.prefixes.map((folderRef) => deleteFolderRecursive(folderRef.fullPath));
+        await Promise.all(folderPromises);
+    } catch (error: any) {
+        if (error.code !== 'storage/object-not-found') {
+            console.warn(`Error limpiando carpeta ${path}:`, error);
+        }
+    }
+};
+
 export const deleteEventFromFirebase = async (eventId: string) => {
   try {
+    // 1. Limpiar Storage (Fotos, Videos, Thumbnails del evento)
+    await deleteFolderRecursive(`eventos/${eventId}`);
+
+    // 2. Limpiar Subcolección de fotos (si existe)
+    // Nota: Firestore no borra subcolecciones automáticamente al borrar el padre.
+    const photosRef = collection(db, EVENTS_COLLECTION, eventId, 'photos');
+    const photoSnaps = await getDocs(photosRef);
+    
+    // Usamos batch (límite 500 ops, si hay más podría fallar, pero para uso normal está bien)
+    const batch = writeBatch(db);
+    photoSnaps.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+    });
+    if (!photoSnaps.empty) {
+        await batch.commit();
+    }
+
+    // 3. Borrar Documento Principal
     await deleteDoc(doc(db, EVENTS_COLLECTION, eventId));
   } catch (error) {
     console.error("Error eliminando evento:", error);
