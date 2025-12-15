@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { X, Upload, User, Info, AlertCircle, Trash2, CheckCircle, Video, Loader2, Lock } from 'lucide-react';
 import { EventConfig } from '../types';
@@ -46,7 +45,8 @@ interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   event: EventConfig;
-  onUpload: (files: File[], authorName: string) => void;
+  // Updated signature to accept progress callback
+  onUpload: (files: File[], authorName: string, onProgress?: (percent: number) => void) => Promise<void>;
   deviceId?: string; // ID único para validar límites
 }
 
@@ -152,6 +152,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
   
   // Upload & Success States
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0); // Progress state 0-100
   const [isSuccess, setIsSuccess] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -378,6 +379,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
     setError(null);
     setIsSuccess(false);
     setIsUploading(false);
+    setUploadProgress(0); // Reset progress
     onClose();
   };
 
@@ -412,15 +414,21 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
     }
 
     setIsUploading(true);
+    setUploadProgress(0);
     
     try {
         await new Promise(resolve => setTimeout(resolve, 100)); 
-        await onUpload(selectedFiles, authorName);
+        
+        // Call onUpload with progress callback
+        await onUpload(selectedFiles, authorName, (percent) => {
+           setUploadProgress(percent);
+        });
         
         // Guardar nombre globalmente para futuros eventos
         localStorage.setItem('album_user_name', authorName);
 
         setIsUploading(false);
+        setUploadProgress(100);
         setIsSuccess(true);
         setTimeout(() => {
             handleClose();
@@ -467,18 +475,41 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, event
         ) : isUploading ? (
             <div className="flex flex-col items-center justify-center flex-1 p-12 text-center animate-fade-in">
                 <div className="mb-8 relative">
-                    <Loader2 size={64} className="text-gray-200 animate-spin" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <Upload size={24} style={{ color: theme.primaryColor }} />
+                    <div className="relative w-24 h-24 flex items-center justify-center">
+                        <Loader2 size={64} className="text-gray-200 animate-spin absolute" />
+                        <span className="text-sm font-bold text-gray-600 relative z-10">{Math.round(uploadProgress)}%</span>
                     </div>
                 </div>
                 
                 <h3 className="text-xl font-bold text-gray-800 mb-2">Procesando archivos...</h3>
-                <p className="text-gray-500 mb-8">Estamos guardando tus recuerdos en la nube.</p>
+                <p className="text-gray-500 mb-6">Estamos guardando tus recuerdos en la nube.</p>
                 
-                <p className="text-xs text-gray-400 mt-3">
+                {/* Progress Bar Container */}
+                <div className="w-full max-w-md bg-gray-100 rounded-full h-4 overflow-hidden shadow-inner border border-gray-200">
+                    <div 
+                        className="h-full rounded-full transition-all duration-300 ease-out"
+                        style={{ 
+                            width: `${uploadProgress}%`,
+                            backgroundColor: theme.primaryColor 
+                        }}
+                    >
+                         <div className="w-full h-full opacity-30 bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-progress-stripes"></div>
+                    </div>
+                </div>
+
+                <p className="text-xs text-gray-400 mt-6">
                     Por favor no cierres esta ventana...
                 </p>
+                
+                <style>{`
+                    @keyframes progress-stripes {
+                        0% { background-position: 1rem 0; }
+                        100% { background-position: 0 0; }
+                    }
+                    .animate-progress-stripes {
+                        animation: progress-stripes 1s linear infinite;
+                    }
+                `}</style>
             </div>
         ) : (
             <>

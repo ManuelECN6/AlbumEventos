@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Lightbox } from './components/Lightbox';
 import { UploadModal } from './components/UploadModal';
@@ -21,9 +20,9 @@ import {
     batchUpdatePhotos,
     reportPhoto,
     resolvePhotoReport,
-    subscribeToAuth, // Nueva importación
-    loginAdmin,      // Nueva importación
-    logoutAdmin      // Nueva importación
+    subscribeToAuth, 
+    loginAdmin,      
+    logoutAdmin      
 } from './services/firebaseService';
 import { 
   Heart, 
@@ -614,10 +613,13 @@ export default function App() {
     }
   };
 
-  const handlePhotoUpload = async (files: File[], authorName: string) => {
+  const handlePhotoUpload = async (files: File[], authorName: string, onProgress?: (percent: number) => void) => {
   const authorColor = activeEvent.theme?.primaryColor || '#a87b51';
+  const totalFiles = files.length;
+  let filesCompleted = 0;
 
-  for (const file of files) {
+  for (let i = 0; i < totalFiles; i++) {
+    const file = files[i];
     const tempId = `temp-${Date.now()}-${Math.random()}`;
 
     // 🔥 1. FOTO TEMPORAL (APARECE AL INSTANTE)
@@ -661,8 +663,14 @@ export default function App() {
         activeEvent.id,
         authorName,
         authorColor,
-        deviceId
+        deviceId,
+        (fileProgress) => {
+             // Calculate overall progress: (Files already done * 100 + current file progress) / Total Files
+             const overallProgress = ((filesCompleted * 100) + fileProgress) / totalFiles;
+             if (onProgress) onProgress(overallProgress);
+        }
       );
+      filesCompleted++;
     } catch (err) {
       console.error("Error subiendo archivo", err);
     }

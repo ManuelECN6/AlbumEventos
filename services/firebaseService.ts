@@ -1,4 +1,3 @@
-
 import { db, storage, auth } from '../firebaseConfig';
 import { 
   collection, 
@@ -19,7 +18,8 @@ import {
 } from 'firebase/firestore';
 import { 
   ref, 
-  uploadBytes, 
+  uploadBytes,
+  uploadBytesResumable, // Changed from uploadBytes
   getDownloadURL, 
   deleteObject,
   getMetadata,
@@ -202,31 +202,52 @@ export const deleteFileFromFirebase = async (fileUrl: string) => {
   }
 };
 
-export const uploadFileToFirebase = async (file: File, path: string): Promise<string> => {
-  try {
-    const storageRef = ref(storage, path);
-    
-    // Robust contentType detection
-    let contentType = file.type;
-    if (!contentType || contentType === '') {
-       const ext = file.name.split('.').pop()?.toLowerCase();
-       if (ext === 'jpg' || ext === 'jpeg') contentType = 'image/jpeg';
-       else if (ext === 'png') contentType = 'image/png';
-       else if (ext === 'webp') contentType = 'image/webp';
-       else if (ext === 'gif') contentType = 'image/gif';
-       else if (ext === 'mp4') contentType = 'video/mp4';
-       else if (ext === 'mov') contentType = 'video/quicktime';
-       else contentType = 'application/octet-stream';
-    }
+export const uploadFileToFirebase = async (
+    file: File, 
+    path: string, 
+    onProgress?: (progress: number) => void
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    try {
+      const storageRef = ref(storage, path);
+      
+      // Robust contentType detection
+      let contentType = file.type;
+      if (!contentType || contentType === '') {
+         const ext = file.name.split('.').pop()?.toLowerCase();
+         if (ext === 'jpg' || ext === 'jpeg') contentType = 'image/jpeg';
+         else if (ext === 'png') contentType = 'image/png';
+         else if (ext === 'webp') contentType = 'image/webp';
+         else if (ext === 'gif') contentType = 'image/gif';
+         else if (ext === 'mp4') contentType = 'video/mp4';
+         else if (ext === 'mov') contentType = 'video/quicktime';
+         else contentType = 'application/octet-stream';
+      }
 
-    const metadata = { contentType };
-    // Pass metadata only if correctly formed
-    const snapshot = await uploadBytes(storageRef, file, metadata);
-    return await getDownloadURL(snapshot.ref);
-  } catch (error: any) {
-    console.error("Error subiendo archivo:", error.code, error.message);
-    throw error;
-  }
+      const metadata = { contentType };
+      
+      // Use uploadBytesResumable instead of uploadBytes to track progress
+      const uploadTask = uploadBytesResumable(storageRef, file, metadata);
+
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          if (onProgress) onProgress(progress);
+        }, 
+        (error) => {
+          console.error("Error subiendo archivo:", error.code, error.message);
+          reject(error);
+        }, 
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          resolve(downloadURL);
+        }
+      );
+    } catch (error: any) {
+      console.error("Error iniciando subida:", error);
+      reject(error);
+    }
+  });
 };
 
 const resizeImage = (file: File, maxWidth: number, quality: number): Promise<File> => {
@@ -277,7 +298,8 @@ export const processAndUploadPhoto = async (
   eventId: string, 
   authorName: string, 
   authorColor: string,
-  deviceId: string
+  deviceId: string,
+  onProgress?: (progress: number) => void
 ): Promise<Photo> => {
   if (!eventId) throw new Error("ID requerido.");
   
@@ -297,7 +319,8 @@ export const processAndUploadPhoto = async (
   
   if (isVideo) {
       const path = `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedName}`;
-      mainUrl = await uploadFileToFirebase(file, path);
+      // Pass progress callback directly for videos
+      mainUrl = await uploadFileToFirebase(file, path, onProgress);
       thumbUrl = mainUrl; 
       finalSize = file.size;
   } else {
@@ -309,7 +332,8 @@ export const processAndUploadPhoto = async (
              mainImg = await resizeImage(file, 2500, 0.90); 
           } catch(err) { console.warn("Resize failed, using original", err); }
 
-          mainUrl = await uploadFileToFirebase(mainImg, `eventos/${eventId}/${userIdFolder}/${timestamp}_${webpName}`);
+          // Pass progress callback for main image
+          mainUrl = await uploadFileToFirebase(mainImg, `eventos/${eventId}/${userIdFolder}/${timestamp}_${webpName}`, onProgress);
           finalSize = mainImg.size;
 
           let thumbImg = file;
@@ -320,7 +344,7 @@ export const processAndUploadPhoto = async (
           thumbUrl = await uploadFileToFirebase(thumbImg, `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${timestamp}_${webpName}`);
       } catch (e) {
           console.warn("Fallback to Original Upload due to error", e);
-          mainUrl = await uploadFileToFirebase(file, `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedName}`);
+          mainUrl = await uploadFileToFirebase(file, `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedName}`, onProgress);
           thumbUrl = await uploadFileToFirebase(file, `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${timestamp}_${sanitizedName}`);
           finalSize = file.size;
       }
@@ -480,7 +504,17 @@ export const permanentDeletePhoto = async (eventId: string, photoId: string, pho
 };
 
 export const recalculateEventStorageUsage = async (eventId: string, photos: Photo[]) => {
-    return 0; 
+    // Calculamos el tamaño real sumando los bytes de todas las fotos
+    const totalBytes = photos.reduce((acc, curr) => acc + (curr.size || 0), 0);
+    
+    try {
+        const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+        await updateDoc(eventRef, { totalUsageBytes: totalBytes });
+    } catch (error) {
+        console.error("Error recalculando uso:", error);
+    }
+    
+    return totalBytes;
 };
 
 export const reprocessEventPhotos = async (
