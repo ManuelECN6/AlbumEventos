@@ -1,12 +1,12 @@
 import { db, storage, auth } from '../firebaseConfig';
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDocs, 
-  getDoc, 
-  updateDoc, 
-  deleteDoc, 
+import {
+  collection,
+  doc,
+  setDoc,
+  getDocs,
+  getDoc,
+  updateDoc,
+  deleteDoc,
   onSnapshot,
   query,
   orderBy,
@@ -16,20 +16,20 @@ import {
   increment,
   runTransaction
 } from 'firebase/firestore';
-import { 
-  ref, 
+import {
+  ref,
   uploadBytes,
-  uploadBytesResumable, 
-  getDownloadURL, 
+  uploadBytesResumable,
+  getDownloadURL,
   deleteObject,
   getMetadata,
   listAll
 } from 'firebase/storage';
-import { 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged, 
-  User 
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  User
 } from "firebase/auth";
 import { EventConfig, Photo } from '../types';
 
@@ -49,7 +49,7 @@ export const loginAdmin = async (email: string, pass: string) => {
 export const logoutAdmin = async () => {
   try {
     await signOut(auth);
-    localStorage.removeItem('album_admin_session'); 
+    localStorage.removeItem('album_admin_session');
   } catch (error) {
     console.error("Error en logout:", error);
   }
@@ -64,23 +64,23 @@ export const subscribeToAuth = (callback: (user: User | null) => void) => {
 // --- FIRESTORE SERVICES ---
 
 const getPhotoLocation = async (eventId: string, photoId: string): Promise<'subcollection' | 'legacy'> => {
-    const photoRef = doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId);
-    const snap = await getDoc(photoRef);
-    return snap.exists() ? 'subcollection' : 'legacy';
+  const photoRef = doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId);
+  const snap = await getDoc(photoRef);
+  return snap.exists() ? 'subcollection' : 'legacy';
 };
 
 export const subscribeToEvents = (callback: (events: EventConfig[]) => void) => {
   const q = query(collection(db, EVENTS_COLLECTION), orderBy('date', 'desc'));
-  
+
   return onSnapshot(q, (snapshot) => {
     const events = snapshot.docs.map(doc => {
-        const data = doc.data() as EventConfig;
-        return { ...data, photos: data.photos || [] };
+      const data = doc.data() as EventConfig;
+      return { ...data, photos: data.photos || [] };
     });
     callback(events);
   }, (error) => {
-      console.error("Error suscribiendo a eventos:", error);
-      callback([]); 
+    console.error("Error suscribiendo a eventos:", error);
+    callback([]);
   });
 };
 
@@ -89,7 +89,7 @@ export const subscribeToEvents = (callback: (events: EventConfig[]) => void) => 
  */
 export const subscribeToVisitorEvent = (identifier: string | null, callback: (events: EventConfig[]) => void) => {
   let docQuery: any;
-  
+
   if (!identifier) {
     docQuery = query(collection(db, EVENTS_COLLECTION), orderBy('date', 'desc'), limit(1));
   } else if (identifier.startsWith('event-') && !identifier.startsWith('evento-')) {
@@ -99,56 +99,145 @@ export const subscribeToVisitorEvent = (identifier: string | null, callback: (ev
   }
 
   let photoUnsubscribe: (() => void) | null = null;
-  let currentEventId: string | null = null; 
+  let currentEventId: string | null = null;
 
   const handleEventDoc = (eventData: EventConfig, eventId: string) => {
-      if (eventId === currentEventId && photoUnsubscribe) {
-          // Optimization: keep listener if same event
-      }
-      currentEventId = eventId;
+    if (eventId === currentEventId && photoUnsubscribe) {
+      // Optimization: keep listener if same event
+    }
+    currentEventId = eventId;
 
-      const legacyPhotos = eventData.photos || [];
-      const photosColRef = collection(db, EVENTS_COLLECTION, eventId, 'photos');
-      
-      const qPhotos = query(photosColRef); 
+    const legacyPhotos = (eventData.photos && Array.isArray(eventData.photos)) ? eventData.photos : [];
+    const photosColRef = collection(db, EVENTS_COLLECTION, eventId, 'photos');
 
-      if (photoUnsubscribe) photoUnsubscribe();
+    const qPhotos = query(photosColRef);
 
-      photoUnsubscribe = onSnapshot(qPhotos, (photoSnaps) => {
-          const subcollectionPhotos = photoSnaps.docs.map(p => p.data() as Photo);
-          
-          const photoMap = new Map<string, Photo>();
-          legacyPhotos.forEach(p => photoMap.set(p.id, p));
-          subcollectionPhotos.forEach(p => photoMap.set(p.id, p));
+    if (photoUnsubscribe) photoUnsubscribe();
 
-          const allPhotos = Array.from(photoMap.values()).sort((a, b) => {
-              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-          });
+    photoUnsubscribe = onSnapshot(qPhotos, (photoSnaps) => {
+      const subcollectionPhotos = photoSnaps.docs.map(p => p.data() as Photo);
 
-          callback([{ ...eventData, id: eventId, photos: allPhotos }]);
-      }, (error) => {
-          console.error("🔥 Error leyendo fotos de subcolección:", error);
+      const photoMap = new Map<string, Photo>();
+
+      // 1. Cargar Legacy primero y SANITIZAR likes
+      legacyPhotos.forEach((p: any) => {
+        const safeP = { ...p, likes: Math.abs(Number(p.likes || 0)) };
+        photoMap.set(p.id, safeP);
       });
+      console.warn("DEBUG: Legacy Photos Loaded:", legacyPhotos.length, "Sample Like:", legacyPhotos[0]?.likes);
+
+      // 2. Mezclar con Subcolección (Smart Merge)
+      subcollectionPhotos.forEach(subP => {
+        const legacyP = photoMap.get(subP.id);
+
+        // FIX: Sanitizar también la subcolección, porque puede contener datos migrados negativos
+        let finalLikes = Math.abs(Number(subP.likes || 0));
+
+        if (legacyP) {
+          const legacyLikes = legacyP.likes; // Ya es Math.abs
+          if (legacyLikes > finalLikes) {
+            finalLikes = legacyLikes;
+          }
+        }
+
+        // Guardamos versión final
+        photoMap.set(subP.id, {
+          ...subP,
+          likes: finalLikes
+        });
+      });
+
+      const allPhotos = Array.from(photoMap.values()).sort((a, b) => {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+
+      callback([{ ...eventData, id: eventId, photos: allPhotos }]);
+    }, (error) => {
+      console.error("🔥 Error leyendo fotos de subcolección:", error);
+    });
   };
 
   const mainUnsubscribe = onSnapshot(docQuery, (snapshot: any) => {
-      let docSnap = null;
-      if (snapshot.docs) {
-          if (snapshot.empty) { callback([]); return; }
-          docSnap = snapshot.docs[0];
-      } else {
-          if (!snapshot.exists()) { callback([]); return; }
-          docSnap = snapshot;
-      }
+    let docSnap = null;
+    if (snapshot.docs) {
+      if (snapshot.empty) { callback([]); return; }
+      docSnap = snapshot.docs[0];
+    } else {
+      if (!snapshot.exists()) { callback([]); return; }
+      docSnap = snapshot;
+    }
 
-      const eventData = docSnap.data() as EventConfig;
-      handleEventDoc(eventData, docSnap.id);
+    const eventData = docSnap.data() as EventConfig;
+    handleEventDoc(eventData, docSnap.id);
   });
 
   return () => {
-      mainUnsubscribe();
-      if (photoUnsubscribe) photoUnsubscribe();
+    mainUnsubscribe();
+    if (photoUnsubscribe) photoUnsubscribe();
   };
+};
+
+export const subscribeToEventPhotos = (eventId: string, callback: (photos: Photo[]) => void) => {
+  const photosColRef = collection(db, EVENTS_COLLECTION, eventId, 'photos');
+  const qPhotos = query(photosColRef); // Podemos añadir orderBy si queremos
+
+  return onSnapshot(qPhotos, (photoSnaps) => {
+    // 1. Fotos de subcolección (Source of Truth moderna)
+    const subcollectionPhotos = photoSnaps.docs.map(p => p.data() as Photo);
+
+    // 2. Intentar mezclar con legacy si es necesario, 
+    // pero para Admin Panel preferimos confiar en la subcolección si existe data.
+    // Sin embargo, para compatibilidad total, deberíamos obtener también el doc principal 
+    // para ver las "legacy photos" si la subcolección está vacía. 
+    // POR AHORA: Como el problema es que NO lee la subcolección, devolvemos esto.
+    // Si necesitamos mezcla, tendríamos que leer el doc del evento también.
+    // Asumamos que si migramos, todo está en subcolección o en array legacy.
+
+    // MEJORA: Para no romper nada, haremos la mezcla igual que en visitor.
+    getDoc(doc(db, EVENTS_COLLECTION, eventId)).then(docSnap => {
+      const data = docSnap.exists() ? docSnap.data() : null;
+      const legacyPhotos = (data && Array.isArray(data.photos)) ? data.photos : [];
+
+      const photoMap = new Map<string, Photo>();
+      // 1. Cargar Legacy primero y SANITIZAR likes (recuperar negativos)
+      legacyPhotos.forEach((p: any) => {
+        const safeP = { ...p, likes: Math.abs(Number(p.likes || 0)) };
+        photoMap.set(p.id, safeP);
+      });
+
+      // 2. Mezclar con Subcolección
+
+
+      subcollectionPhotos.forEach(subP => {
+        const legacyP = photoMap.get(subP.id);
+
+        // FIX: Sanitizar también subcolección para admin
+        let finalLikes = Math.abs(Number(subP.likes || 0));
+
+        if (legacyP) {
+          // Si existe en legacy, usams el mayor valor de actividad registrada
+          // (Como legacyP ya está sanitizado a positivo, comparamos manzanas con manzanas)
+          const legacyLikes = legacyP.likes; // Ya es Math.abs
+
+          if (legacyLikes > finalLikes) {
+            finalLikes = legacyLikes;
+          }
+        }
+
+        // Guardamos versión final
+        photoMap.set(subP.id, {
+          ...subP,
+          likes: finalLikes
+        });
+      });
+
+      const allPhotos = Array.from(photoMap.values()).sort((a, b) => {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+
+      callback(allPhotos);
+    });
+  });
 };
 
 export const saveEventToFirebase = async (event: EventConfig) => {
@@ -156,7 +245,7 @@ export const saveEventToFirebase = async (event: EventConfig) => {
     const eventRef = doc(db, EVENTS_COLLECTION, event.id);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { photos, ...eventDataWithoutPhotos } = event;
-    await setDoc(eventRef, eventDataWithoutPhotos, { merge: true }); 
+    await setDoc(eventRef, eventDataWithoutPhotos, { merge: true });
   } catch (error) {
     console.error("Error guardando evento:", error);
     throw error;
@@ -175,21 +264,21 @@ export const updateEventFieldInFirebase = async (eventId: string, fieldPath: str
 
 // HELPER: Borrado recursivo de carpeta en Storage
 const deleteFolderRecursive = async (path: string) => {
-    const listRef = ref(storage, path);
-    try {
-        const res = await listAll(listRef);
-        // Borrar archivos
-        const filePromises = res.items.map((itemRef) => deleteObject(itemRef));
-        await Promise.all(filePromises);
-        
-        // Borrar subcarpetas
-        const folderPromises = res.prefixes.map((folderRef) => deleteFolderRecursive(folderRef.fullPath));
-        await Promise.all(folderPromises);
-    } catch (error: any) {
-        if (error.code !== 'storage/object-not-found') {
-            console.warn(`Error limpiando carpeta ${path}:`, error);
-        }
+  const listRef = ref(storage, path);
+  try {
+    const res = await listAll(listRef);
+    // Borrar archivos
+    const filePromises = res.items.map((itemRef) => deleteObject(itemRef));
+    await Promise.all(filePromises);
+
+    // Borrar subcarpetas
+    const folderPromises = res.prefixes.map((folderRef) => deleteFolderRecursive(folderRef.fullPath));
+    await Promise.all(folderPromises);
+  } catch (error: any) {
+    if (error.code !== 'storage/object-not-found') {
+      console.warn(`Error limpiando carpeta ${path}:`, error);
     }
+  }
 };
 
 export const deleteEventFromFirebase = async (eventId: string) => {
@@ -201,14 +290,14 @@ export const deleteEventFromFirebase = async (eventId: string) => {
     // Nota: Firestore no borra subcolecciones automáticamente al borrar el padre.
     const photosRef = collection(db, EVENTS_COLLECTION, eventId, 'photos');
     const photoSnaps = await getDocs(photosRef);
-    
+
     // Usamos batch (límite 500 ops, si hay más podría fallar, pero para uso normal está bien)
     const batch = writeBatch(db);
     photoSnaps.docs.forEach((doc) => {
-        batch.delete(doc.ref);
+      batch.delete(doc.ref);
     });
     if (!photoSnaps.empty) {
-        await batch.commit();
+      await batch.commit();
     }
 
     // 3. Borrar Documento Principal
@@ -240,41 +329,41 @@ export const deleteFileFromFirebase = async (fileUrl: string) => {
 };
 
 export const uploadFileToFirebase = async (
-    file: File, 
-    path: string, 
-    onProgress?: (progress: number) => void
+  file: File,
+  path: string,
+  onProgress?: (progress: number) => void
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
     try {
       const storageRef = ref(storage, path);
-      
+
       // Robust contentType detection
       let contentType = file.type;
       if (!contentType || contentType === '') {
-         const ext = file.name.split('.').pop()?.toLowerCase();
-         if (ext === 'jpg' || ext === 'jpeg') contentType = 'image/jpeg';
-         else if (ext === 'png') contentType = 'image/png';
-         else if (ext === 'webp') contentType = 'image/webp';
-         else if (ext === 'gif') contentType = 'image/gif';
-         else if (ext === 'mp4') contentType = 'video/mp4';
-         else if (ext === 'mov') contentType = 'video/quicktime';
-         else contentType = 'application/octet-stream';
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        if (ext === 'jpg' || ext === 'jpeg') contentType = 'image/jpeg';
+        else if (ext === 'png') contentType = 'image/png';
+        else if (ext === 'webp') contentType = 'image/webp';
+        else if (ext === 'gif') contentType = 'image/gif';
+        else if (ext === 'mp4') contentType = 'video/mp4';
+        else if (ext === 'mov') contentType = 'video/quicktime';
+        else contentType = 'application/octet-stream';
       }
 
       const metadata = { contentType };
-      
+
       // Use uploadBytesResumable instead of uploadBytes to track progress
       const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
-      uploadTask.on('state_changed', 
+      uploadTask.on('state_changed',
         (snapshot) => {
           const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
           if (onProgress) onProgress(progress);
-        }, 
+        },
         (error) => {
           console.error("Error subiendo archivo:", error.code, error.message);
           reject(error);
-        }, 
+        },
         async () => {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           resolve(downloadURL);
@@ -288,61 +377,61 @@ export const uploadFileToFirebase = async (
 };
 
 const resizeImage = (file: File, maxWidth: number, quality: number): Promise<File> => {
-    return new Promise((resolve) => {
-        if (!file.type.startsWith('image/')) { resolve(file); return; }
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-        
-        img.onload = () => {
-            let { width, height } = img;
-            if (width > height) {
-                if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; }
-            } else {
-                if (height > maxWidth) { width *= maxWidth / height; height = maxWidth; }
-            }
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) { 
-                URL.revokeObjectURL(url);
-                resolve(file); 
-                return; 
-            }
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(img, 0, 0, width, height);
-            canvas.toBlob((blob) => {
-                URL.revokeObjectURL(url);
-                if (blob) {
-                    const newName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
-                    resolve(new File([blob], newName, { type: 'image/webp', lastModified: Date.now() }));
-                } else resolve(file);
-            }, 'image/webp', quality);
-        };
-        
-        img.onerror = () => { 
-            URL.revokeObjectURL(url); 
-            resolve(file); 
-        };
-        
-        img.src = url;
-    });
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) { resolve(file); return; }
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > height) {
+        if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; }
+      } else {
+        if (height > maxWidth) { width *= maxWidth / height; height = maxWidth; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        resolve(file);
+        return;
+      }
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        URL.revokeObjectURL(url);
+        if (blob) {
+          const newName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
+          resolve(new File([blob], newName, { type: 'image/webp', lastModified: Date.now() }));
+        } else resolve(file);
+      }, 'image/webp', quality);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+
+    img.src = url;
+  });
 };
 
 export const processAndUploadPhoto = async (
-  file: File, 
-  eventId: string, 
-  authorName: string, 
+  file: File,
+  eventId: string,
+  authorName: string,
   authorColor: string,
   deviceId: string,
   onProgress?: (progress: number) => void
 ): Promise<Photo> => {
   if (!eventId) throw new Error("ID requerido.");
-  
+
   const isVideo = file.type.startsWith('video/') || file.type === 'video/quicktime';
   const timestamp = Date.now();
-  
+
   // LOGIC CHANGE: Create a readable folder name for the user
   const safeAuthor = (authorName || 'anonimo').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
   const shortDevice = deviceId ? deviceId.slice(-6) : 'unk';
@@ -353,38 +442,38 @@ export const processAndUploadPhoto = async (
 
   let mainUrl = '', thumbUrl = '';
   let finalSize = 0;
-  
+
   if (isVideo) {
-      const path = `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedName}`;
-      // Pass progress callback directly for videos
-      mainUrl = await uploadFileToFirebase(file, path, onProgress);
-      thumbUrl = mainUrl; 
-      finalSize = file.size;
+    const path = `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedName}`;
+    // Pass progress callback directly for videos
+    mainUrl = await uploadFileToFirebase(file, path, onProgress);
+    thumbUrl = mainUrl;
+    finalSize = file.size;
   } else {
+    try {
+      const webpName = sanitizedName.replace(/\.[^/.]+$/, "") + ".webp";
+
+      let mainImg = file;
       try {
-          const webpName = sanitizedName.replace(/\.[^/.]+$/, "") + ".webp";
-          
-          let mainImg = file;
-          try {
-             mainImg = await resizeImage(file, 2500, 0.90); 
-          } catch(err) { console.warn("Resize failed, using original", err); }
+        mainImg = await resizeImage(file, 2500, 0.90);
+      } catch (err) { console.warn("Resize failed, using original", err); }
 
-          // Pass progress callback for main image
-          mainUrl = await uploadFileToFirebase(mainImg, `eventos/${eventId}/${userIdFolder}/${timestamp}_${webpName}`, onProgress);
-          finalSize = mainImg.size;
+      // Pass progress callback for main image
+      mainUrl = await uploadFileToFirebase(mainImg, `eventos/${eventId}/${userIdFolder}/${timestamp}_${webpName}`, onProgress);
+      finalSize = mainImg.size;
 
-          let thumbImg = file;
-          try {
-             thumbImg = await resizeImage(file, 1200, 0.80);
-          } catch(err) { console.warn("Thumb resize failed", err); }
-           
-          thumbUrl = await uploadFileToFirebase(thumbImg, `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${timestamp}_${webpName}`);
-      } catch (e) {
-          console.warn("Fallback to Original Upload due to error", e);
-          mainUrl = await uploadFileToFirebase(file, `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedName}`, onProgress);
-          thumbUrl = await uploadFileToFirebase(file, `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${timestamp}_${sanitizedName}`);
-          finalSize = file.size;
-      }
+      let thumbImg = file;
+      try {
+        thumbImg = await resizeImage(file, 1200, 0.80);
+      } catch (err) { console.warn("Thumb resize failed", err); }
+
+      thumbUrl = await uploadFileToFirebase(thumbImg, `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${timestamp}_${webpName}`);
+    } catch (e) {
+      console.warn("Fallback to Original Upload due to error", e);
+      mainUrl = await uploadFileToFirebase(file, `eventos/${eventId}/${userIdFolder}/${timestamp}_${sanitizedName}`, onProgress);
+      thumbUrl = await uploadFileToFirebase(file, `eventos/${eventId}/${userIdFolder}/thumbnails/thumb_${timestamp}_${sanitizedName}`);
+      finalSize = file.size;
+    }
   }
 
   const newPhoto: Photo = {
@@ -407,115 +496,128 @@ export const processAndUploadPhoto = async (
   };
 
   try {
-      await setDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId), newPhoto);
+    await setDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId), newPhoto);
   } catch (error) {
-      console.error("🔥 Error guardando en Firestore:", error);
-      throw error;
+    console.error("🔥 Error guardando en Firestore:", error);
+    throw error;
   }
 
   const eventRef = doc(db, EVENTS_COLLECTION, eventId);
   try {
-      await updateDoc(eventRef, { totalUsageBytes: increment(finalSize) });
-  } catch(e) {
-      console.warn("No se pudo actualizar totalUsageBytes, pero la foto se guardó.", e);
+    await updateDoc(eventRef, { totalUsageBytes: increment(finalSize) });
+  } catch (e) {
+    console.warn("No se pudo actualizar totalUsageBytes, pero la foto se guardó.", e);
   }
 
   return newPhoto;
 };
 
 export const togglePhotoLike = async (eventId: string, photoId: string, incrementVal: boolean) => {
-    const loc = await getPhotoLocation(eventId, photoId);
-    if (loc === 'subcollection') {
-        await updateDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId), { likes: increment(incrementVal ? 1 : -1) });
-    } else {
-        const eventRef = doc(db, EVENTS_COLLECTION, eventId);
-        await runTransaction(db, async (t) => {
-            const d = await t.get(eventRef);
-            if (!d.exists()) return;
-            const photos = d.data().photos || [];
-            const idx = photos.findIndex((p:any) => p.id === photoId);
-            if (idx >= 0) {
-                photos[idx].likes = Math.max(0, photos[idx].likes + (incrementVal ? 1 : -1));
-                t.update(eventRef, { photos });
-            }
-        });
-    }
+  const loc = await getPhotoLocation(eventId, photoId);
+
+  if (loc === 'subcollection') {
+    // CORRECCIÓN: Usar transacción para evitar likes negativos (increment blind era inseguro)
+    const photoRef = doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId);
+    await runTransaction(db, async (t) => {
+      const pDoc = await t.get(photoRef);
+      if (!pDoc.exists()) return;
+
+      const current = Number(pDoc.data().likes || 0);
+      const next = current + (incrementVal ? 1 : -1);
+      // Blindaje final: nunca bajar de 0
+      const finalLikes = Math.max(0, next);
+
+      t.update(photoRef, { likes: finalLikes });
+    });
+  } else {
+    const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+    await runTransaction(db, async (t) => {
+      const d = await t.get(eventRef);
+      if (!d.exists()) return;
+      const photos = d.data().photos || [];
+      const idx = photos.findIndex((p: any) => p.id === photoId);
+      if (idx >= 0) {
+        photos[idx].likes = Math.max(0, photos[idx].likes + (incrementVal ? 1 : -1));
+        t.update(eventRef, { photos });
+      }
+    });
+  }
 };
 
 export const reportPhoto = async (eventId: string, photoId: string) => {
-    const loc = await getPhotoLocation(eventId, photoId);
-    if (loc === 'subcollection') {
-        await updateDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId), { reports: increment(1) });
-    } else {
-         const eventRef = doc(db, EVENTS_COLLECTION, eventId);
-         await runTransaction(db, async (t) => {
-             const d = await t.get(eventRef);
-             if (!d.exists()) return;
-             const photos = d.data().photos || [];
-             const idx = photos.findIndex((p:any) => p.id === photoId);
-             if (idx >= 0) {
-                 photos[idx].reports = (photos[idx].reports || 0) + 1;
-                 t.update(eventRef, { photos });
-             }
-         });
-    }
+  const loc = await getPhotoLocation(eventId, photoId);
+  if (loc === 'subcollection') {
+    await updateDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId), { reports: increment(1) });
+  } else {
+    const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+    await runTransaction(db, async (t) => {
+      const d = await t.get(eventRef);
+      if (!d.exists()) return;
+      const photos = d.data().photos || [];
+      const idx = photos.findIndex((p: any) => p.id === photoId);
+      if (idx >= 0) {
+        photos[idx].reports = (photos[idx].reports || 0) + 1;
+        t.update(eventRef, { photos });
+      }
+    });
+  }
 };
 
 export const resolvePhotoReport = async (eventId: string, photoId: string) => {
-    const loc = await getPhotoLocation(eventId, photoId);
-    if (loc === 'subcollection') {
-        await updateDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId), { reports: 0 });
-    } else {
-         // Legacy logic omitted
-    }
+  const loc = await getPhotoLocation(eventId, photoId);
+  if (loc === 'subcollection') {
+    await updateDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId), { reports: 0 });
+  } else {
+    // Legacy logic omitted
+  }
 };
 
 export const updatePhotoField = async (eventId: string, photoId: string, field: string, value: any) => {
-    const loc = await getPhotoLocation(eventId, photoId);
-    if (loc === 'subcollection') {
-        await updateDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId), { [field]: value });
-    } else {
-        const eventRef = doc(db, EVENTS_COLLECTION, eventId);
-        await runTransaction(db, async (t) => {
-            const d = await t.get(eventRef);
-            if (!d.exists()) return;
-            const photos = d.data().photos || [];
-            const idx = photos.findIndex((p:any) => p.id === photoId);
-            if (idx >= 0) {
-                photos[idx] = { ...photos[idx], [field]: value };
-                t.update(eventRef, { photos });
-            }
-        });
-    }
+  const loc = await getPhotoLocation(eventId, photoId);
+  if (loc === 'subcollection') {
+    await updateDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId), { [field]: value });
+  } else {
+    const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+    await runTransaction(db, async (t) => {
+      const d = await t.get(eventRef);
+      if (!d.exists()) return;
+      const photos = d.data().photos || [];
+      const idx = photos.findIndex((p: any) => p.id === photoId);
+      if (idx >= 0) {
+        photos[idx] = { ...photos[idx], [field]: value };
+        t.update(eventRef, { photos });
+      }
+    });
+  }
 };
 
 export const batchUpdatePhotos = async (eventId: string, photoIds: string[], updates: Partial<Photo>) => {
-    const batch = writeBatch(db);
-    const legacyIds: string[] = [];
+  const batch = writeBatch(db);
+  const legacyIds: string[] = [];
 
-    await Promise.all(photoIds.map(async (id) => {
-        const ref = doc(db, EVENTS_COLLECTION, eventId, 'photos', id);
-        const snap = await getDoc(ref);
-        if (snap.exists()) batch.update(ref, updates);
-        else legacyIds.push(id);
-    }));
+  await Promise.all(photoIds.map(async (id) => {
+    const ref = doc(db, EVENTS_COLLECTION, eventId, 'photos', id);
+    const snap = await getDoc(ref);
+    if (snap.exists()) batch.update(ref, updates);
+    else legacyIds.push(id);
+  }));
 
-    await batch.commit();
+  await batch.commit();
 
-    if (legacyIds.length > 0) {
-        const eventRef = doc(db, EVENTS_COLLECTION, eventId);
-        await runTransaction(db, async (t) => {
-            const d = await t.get(eventRef);
-            if (!d.exists()) return;
-            const photos = d.data().photos || [];
-            let changed = false;
-            legacyIds.forEach(id => {
-                const idx = photos.findIndex((p:any) => p.id === id);
-                if (idx >= 0) { photos[idx] = { ...photos[idx], ...updates }; changed = true; }
-            });
-            if (changed) t.update(eventRef, { photos });
-        });
-    }
+  if (legacyIds.length > 0) {
+    const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+    await runTransaction(db, async (t) => {
+      const d = await t.get(eventRef);
+      if (!d.exists()) return;
+      const photos = d.data().photos || [];
+      let changed = false;
+      legacyIds.forEach(id => {
+        const idx = photos.findIndex((p: any) => p.id === id);
+        if (idx >= 0) { photos[idx] = { ...photos[idx], ...updates }; changed = true; }
+      });
+      if (changed) t.update(eventRef, { photos });
+    });
+  }
 };
 
 export const softDeletePhoto = (eventId: string, photoId: string) => updatePhotoField(eventId, photoId, 'isDeleted', true);
@@ -523,35 +625,35 @@ export const restorePhoto = (eventId: string, photoId: string) => updatePhotoFie
 export const archivePhoto = (eventId: string, photoId: string, archive: boolean) => updatePhotoField(eventId, photoId, 'isArchived', archive);
 
 export const permanentDeletePhoto = async (eventId: string, photoId: string, photoUrl: string, thumbnailUrl?: string) => {
-    await deleteFileFromFirebase(photoUrl);
-    if (thumbnailUrl && thumbnailUrl !== photoUrl) await deleteFileFromFirebase(thumbnailUrl);
-    
-    const loc = await getPhotoLocation(eventId, photoId);
-    if (loc === 'subcollection') {
-        await deleteDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId));
-    } else {
-        const eventRef = doc(db, EVENTS_COLLECTION, eventId);
-        await runTransaction(db, async (t) => {
-            const d = await t.get(eventRef);
-            if (!d.exists()) return;
-            const photos = d.data().photos || [];
-            t.update(eventRef, { photos: photos.filter((p:any) => p.id !== photoId) });
-        });
-    }
+  await deleteFileFromFirebase(photoUrl);
+  if (thumbnailUrl && thumbnailUrl !== photoUrl) await deleteFileFromFirebase(thumbnailUrl);
+
+  const loc = await getPhotoLocation(eventId, photoId);
+  if (loc === 'subcollection') {
+    await deleteDoc(doc(db, EVENTS_COLLECTION, eventId, 'photos', photoId));
+  } else {
+    const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+    await runTransaction(db, async (t) => {
+      const d = await t.get(eventRef);
+      if (!d.exists()) return;
+      const photos = d.data().photos || [];
+      t.update(eventRef, { photos: photos.filter((p: any) => p.id !== photoId) });
+    });
+  }
 };
 
 export const recalculateEventStorageUsage = async (eventId: string, photos: Photo[]) => {
-    // Calculamos el tamaño real sumando los bytes de todas las fotos
-    const totalBytes = photos.reduce((acc, curr) => acc + (curr.size || 0), 0);
-    
-    try {
-        const eventRef = doc(db, EVENTS_COLLECTION, eventId);
-        await updateDoc(eventRef, { totalUsageBytes: totalBytes });
-    } catch (error) {
-        console.error("Error recalculando uso:", error);
-    }
-    
-    return totalBytes;
+  // Calculamos el tamaño real sumando los bytes de todas las fotos
+  const totalBytes = photos.reduce((acc, curr) => acc + (curr.size || 0), 0);
+
+  try {
+    const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+    await updateDoc(eventRef, { totalUsageBytes: totalBytes });
+  } catch (error) {
+    console.error("Error recalculando uso:", error);
+  }
+
+  return totalBytes;
 };
 
 export const reprocessEventPhotos = async (
@@ -628,8 +730,8 @@ export const reprocessEventPhotos = async (
         doc(db, EVENTS_COLLECTION, eventId, 'photos', photo.id)
       );
 
+      // ... (end of reprocessEventPhotos)
       processed++; // ✅ AQUÍ
-
 
     } catch (err) {
       console.error("Error reprocesando foto", photo.id, err);
@@ -644,82 +746,143 @@ export const reprocessEventPhotos = async (
 };
 
 /**
+ * REPARADOR DE DATOS: Corrige likes negativos
+ */
+export const repairNegativeLikes = async (eventId: string) => {
+  // 1. REPARAR SUBCOLECCIÓN (Carga perezosa)
+  const photosRef = collection(db, EVENTS_COLLECTION, eventId, 'photos');
+  const q = query(photosRef, where('likes', '<', 0));
+  const snapshot = await getDocs(q);
+  let fixedCount = 0;
+
+  if (!snapshot.empty) {
+    const batch = writeBatch(db);
+
+    snapshot.docs.forEach((docSnap) => {
+      const currentLikes = Number(docSnap.data().likes);
+      if (!isNaN(currentLikes) && currentLikes < 0) {
+        // CORRECCIÓN: Convertir a positivo en lugar de 0
+        const newLikes = Math.abs(currentLikes);
+        console.log(`Fixing photo ${docSnap.id}: ${currentLikes} -> ${newLikes}`);
+        batch.update(docSnap.ref, { likes: newLikes });
+        fixedCount++;
+      }
+    });
+
+    await batch.commit();
+  }
+
+  // 2. REPARAR ARRAY LEGADO (Si existe)
+  if (eventId) {
+    const eventRef = doc(db, EVENTS_COLLECTION, eventId);
+    try {
+      await runTransaction(db, async (t) => {
+        const d = await t.get(eventRef);
+        if (!d.exists()) return;
+
+        const photos = d.data().photos;
+        let changed = false;
+
+        if (Array.isArray(photos)) {
+          photos.forEach((p: any) => {
+            const pLikes = Number(p.likes);
+            if (!isNaN(pLikes) && pLikes < 0) {
+              p.likes = Math.abs(pLikes);
+              changed = true;
+              fixedCount++;
+            }
+          });
+        }
+
+        if (changed) {
+          t.update(eventRef, { photos });
+        }
+      });
+    } catch (e) {
+      console.error("Error in legacy repair transaction", e);
+    }
+  }
+
+  return fixedCount;
+};
+
+/**
  * 1. ESCANEAR ARCHIVOS HUÉRFANOS (SIN BORRAR)
  * Devuelve la lista de rutas que NO existen en Firestore pero SÍ en Storage.
  */
 export const scanEventOrphanFiles = async (eventId: string): Promise<string[]> => {
-    if (!eventId) throw new Error("eventId requerido");
+  if (!eventId) throw new Error("eventId requerido");
 
-    // 1️⃣ Obtener rutas válidas desde Firestore
-    const photosSnap = await getDocs(collection(db, EVENTS_COLLECTION, eventId, 'photos'));
-    const validPaths = new Set<string>();
+  // 1️⃣ Obtener rutas válidas desde Firestore
+  const photosSnap = await getDocs(collection(db, EVENTS_COLLECTION, eventId, 'photos'));
+  const validPaths = new Set<string>();
 
-    photosSnap.docs.forEach(doc => {
-        const photo = doc.data() as Photo;
-        [photo.url, photo.thumbnail].forEach(url => {
-            if (!url) return;
-            if (url.startsWith('gs://')) {
-                validPaths.add(url.replace(/^gs:\/\/[^/]+\//, ''));
-            } else {
-                const match = decodeURIComponent(url).match(/\/o\/(.+)\?/);
-                if (match?.[1]) validPaths.add(match[1]);
-            }
-        });
-        
-        // También protegemos los assets del evento (avatar, banner)
-        // Nota: Idealmente deberíamos pasarlos como argumento o leer el doc del evento,
-        // pero por seguridad asumimos que si están en la carpeta 'assets', podríamos querer conservarlos
-        // o validarlos. Para esta implementación estricta, si no está en `photos`, es huérfano.
-        // MEJORA: Leer el doc del evento para proteger banner/avatar.
+  photosSnap.docs.forEach(doc => {
+    const photo = doc.data() as Photo;
+    [photo.url, photo.thumbnail].forEach(url => {
+      if (!url) return;
+      if (url.startsWith('gs://')) {
+        validPaths.add(url.replace(/^gs:\/\/[^/]+\//, ''));
+      } else {
+        const match = decodeURIComponent(url).match(/\/o\/(.+)\?/);
+        if (match?.[1]) validPaths.add(match[1]);
+      }
     });
 
-    // Leer doc del evento para proteger banner y avatar
-    const eventDoc = await getDoc(doc(db, EVENTS_COLLECTION, eventId));
-    if (eventDoc.exists()) {
-        const evt = eventDoc.data() as EventConfig;
-        [evt.coverImage, evt.theme?.avatarImage].forEach(url => {
-            if (!url) return;
-            const match = decodeURIComponent(url).match(/\/o\/(.+)\?/);
-            if (match?.[1]) validPaths.add(match[1]);
-        });
-    }
+    // También protegemos los assets del evento (avatar, banner)
+    // Nota: Idealmente deberíamos pasarlos como argumento o leer el doc del evento,
+    // pero por seguridad asumimos que si están en la carpeta 'assets', podríamos querer conservarlos
+    // o validarlos. Para esta implementación estricta, si no está en `photos`, es huérfano.
+    // MEJORA: Leer el doc del evento para proteger banner/avatar.
+  });
 
-    // 2️⃣ Listar TODOS los archivos del evento en Storage
-    const baseRef = ref(storage, `eventos/${eventId}`);
-    const allFiles: string[] = [];
+  // Leer doc del evento para proteger banner y avatar
+  const eventDoc = await getDoc(doc(db, EVENTS_COLLECTION, eventId));
+  if (eventDoc.exists()) {
+    const evt = eventDoc.data() as EventConfig;
+    [evt.coverImage, evt.theme?.avatarImage].forEach(url => {
+      if (!url) return;
+      const match = decodeURIComponent(url).match(/\/o\/(.+)\?/);
+      if (match?.[1]) validPaths.add(match[1]);
+    });
+  }
 
-    const walk = async (folderRef: any) => {
-        const res = await listAll(folderRef);
-        res.items.forEach(item => allFiles.push(item.fullPath));
-        await Promise.all(res.prefixes.map(walk));
-    };
+  // 2️⃣ Listar TODOS los archivos del evento en Storage
+  const baseRef = ref(storage, `eventos/${eventId}`);
+  const allFiles: string[] = [];
 
-    await walk(baseRef);
+  const walk = async (folderRef: any) => {
+    const res = await listAll(folderRef);
+    res.items.forEach(item => allFiles.push(item.fullPath));
+    await Promise.all(res.prefixes.map(walk));
+  };
 
-    // 3️⃣ Filtrar huérfanos
-    return allFiles.filter(path => !validPaths.has(path));
+  await walk(baseRef);
+
+  // 3️⃣ Filtrar huérfanos
+  return allFiles.filter(path => !validPaths.has(path));
 };
 
 /**
  * 2. BORRAR ARCHIVOS ESPECÍFICOS (SEGUNDO PASO)
  */
 export const deleteStorageFilesBatch = async (
-    filePaths: string[],
-    onProgress?: (deleted: number, total: number) => void
+  filePaths: string[],
+  onProgress?: (deleted: number, total: number) => void
 ) => {
-    let deleted = 0;
-    const total = filePaths.length;
+  let deleted = 0;
+  const total = filePaths.length;
 
-    for (const path of filePaths) {
-        try {
-            await deleteObject(ref(storage, path));
-            deleted++;
-            onProgress?.(deleted, total);
-        } catch (e) {
-            console.warn("No se pudo borrar:", path, e);
-        }
+  for (const path of filePaths) {
+    try {
+      await deleteObject(ref(storage, path));
+      deleted++;
+      onProgress?.(deleted, total);
+    } catch (e) {
+      console.warn("No se pudo borrar:", path, e);
     }
-    return { deleted, total };
+  }
+  return { deleted, total };
 };
 
 // MANTENEMOS LA FUNCIÓN ANTIGUA POR COMPATIBILIDAD (O LA REDIRIGIMOS)
@@ -727,7 +890,9 @@ export const cleanupOrphanStorageFiles = async (
   eventId: string,
   onProgress?: (deleted: number, total: number) => void
 ) => {
-    // Versión legacy que hace todo de una vez
-    const orphans = await scanEventOrphanFiles(eventId);
-    return await deleteStorageFilesBatch(orphans, onProgress);
+  // Versión legacy que hace todo de una vez
+  const orphans = await scanEventOrphanFiles(eventId);
+  return await deleteStorageFilesBatch(orphans, onProgress);
 };
+
+
